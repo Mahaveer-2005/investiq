@@ -1,0 +1,27 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: 'Inter', -apple-system, sans-serif;
+  background: #020810;
+  color: #e2e8f0;
+  overflow-x: hidden;
+}
+
+#root { min-height: 100vh; padding-bottom: 30px; }
+
+::-webkit-scrollbar       { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(99,102,241,0.35); border-radius: 4px; }
+
+::selection { background: rgba(99,102,241,0.4); color: #fff; }
+
+@keyframes spin   { to { transform: rotate(360deg); } }
+@keyframes fadein { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
+@keyframes pulse  { 0%,100%{opacity:1} 50%{opacity:0.4} }
+@keyframes ticker { 0%{transform:translateX(0)} 100%{transform:translateX(-33.33%)} }
+@keyframes float  { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-16px)} }
+@keyframes orb1   { 0%,100%{transform:translate(0,0)} 50%{transform:translate(50px,-40px)} }
+@keyframes orb2   { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-40px,50px)} }
+@keyframes orb3   { 0%,100%{transform:translate(0,0)} 50%{transform:translate(35px,35px)} }

@@ -1,0 +1,39 @@
+{
+  "feature_cols": [
+    "panic_score",
+    "loss_aversion_score",
+    "overconfidence_score",
+    "herd_score",
+    "recency_bias_score",
+    "disposition_score",
+    "trades_per_day",
+    "avg_holding_days",
+    "win_rate",
+    "unique_symbols",
+    "total_trades",
+    "large_trade_ratio"
+  ],
+  "bias_names": [
+    "PANIC_SELLING",
+    "LOSS_AVERSION",
+    "OVERCONFIDENCE",
+    "HERD_BEHAVIOR",
+    "RECENCY_BIAS",
+    "OVERTRADING",
+    "DISPOSITION_EFFECT"
+  ],
+  "risk_classes": [
+    "aggressive",
+    "balanced",
+    "conservative",
+    "moderate"
+  ],
+  "model_version": "1.0.0",
+  "trained_on": 5000,
+  "metrics": {
+    "bias_classifier_avg_f1": 0.9387022428826504,
+    "risk_classifier_accuracy": 0.906,
+    "score_regressor_rmse": 3.437061040965489,
+    "score_regressor_r2": 0.9339807813812839
+  }
+}
