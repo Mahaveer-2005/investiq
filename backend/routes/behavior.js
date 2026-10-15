@@ -4,7 +4,7 @@ const User   = require('../models/User');
 const axios  = require('axios');
 const { groqChatJSON, verifyGroqConfig } = require('../utils/groqClient');
 
-const ML_SERVER = 'http://localhost:5001';
+const ML_SERVER = (process.env.ML_SERVER_URL || 'http://localhost:5001').replace(/\/$/, '');
 const behaviorAiCache = new (require('node-cache'))({ stdTTL: 1800 });
 
 // ── AI-generated natural-language behaviour coaching (Groq — free API) ────
