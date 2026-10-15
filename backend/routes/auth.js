@@ -6,7 +6,7 @@ const { generateOTP, sendOTPEmail, sendPasswordResetEmail } = require('../utils/
 const { validatePasswordStrength, validateEmail } = require('../utils/validators');
 const crypto = require('crypto');
 
-const JWT_SECRET  = process.env.JWT_SECRET  || 'investiq_secret_2024';
+const JWT_SECRET  = process.env.JWT_SECRET  || 'investiq_secret_key_2024';
 const JWT_EXPIRES = process.env.JWT_EXPIRES || '30d';
 const OTP_TTL_MIN = 10;
 
