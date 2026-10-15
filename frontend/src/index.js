@@ -4,6 +4,10 @@ import './index.css';
 import App from './App';
 import axios from 'axios';
 
+// CRA embeds REACT_APP_* values at build time. Keep an empty base URL for
+// local development (where package.json's proxy handles /api requests).
+axios.defaults.baseURL = (process.env.REACT_APP_API_URL || '').replace(/\/+$/, '');
+
 axios.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
