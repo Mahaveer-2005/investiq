@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API = axios.create({ baseURL: '/api' });
+const API_BASE_URL = (process.env.REACT_APP_API_URL || '').replace(/\/+$/, '');
+const API = axios.create({ baseURL: `${API_BASE_URL}/api` });
 
 API.interceptors.request.use((config) => {
   const token = localStorage.getItem('investiq_token');
