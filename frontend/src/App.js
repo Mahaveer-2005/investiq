@@ -74,7 +74,6 @@ function AppContent() {
           <Route path="/sip" element={<PrivateRoute><SIP /></PrivateRoute>} />
           <Route path="/advisor" element={<PrivateRoute><Advisor /></PrivateRoute>} />
           <Route path="/intraday" element={<PrivateRoute><Intraday /></PrivateRoute>} />
-          // Inside routes:
 <Route path="/fundamental" element={<PrivateRoute><Fundamental /></PrivateRoute>} />
 <Route path="/fundamental/:symbol" element={<PrivateRoute><Fundamental /></PrivateRoute>} />
         </Routes>
