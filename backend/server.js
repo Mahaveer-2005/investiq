@@ -5,8 +5,35 @@ require('dotenv').config();
 
 const app = express();
 
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }));
-app.use(express.json());
+const allowedOrigins = (process.env.CLIENT_URL || 'http://localhost:3000')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+
+app.use(cors({
+  origin(origin, callback) {
+    // Allow server-to-server calls and local tools without an Origin header.
+    if (!origin || allowedOrigins.includes(origin.replace(/\/$/, ''))) {
+      return callback(null, true);
+    }
+    return callback(new Error('Origin is not allowed by CORS'));
+  },
+  credentials: true,
+}));
+app.use(express.json({ limit: '1mb' }));
+
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'investiq-api',
+    database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
+  });
+});
+
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  console.error('❌ JWT_SECRET must be configured in production.');
+  process.exit(1);
+}
 
 // Routes
 app.use('/api/realestate', require('./routes/realestate'));
@@ -32,20 +59,38 @@ app.use('/api/fundamental', require('./routes/fundamental'));
 // Add this line with your other routes:
 app.use('/api/stock-detail', require('./routes/stockDetail'));
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/investiq')
-  .then(() => console.log('✅ MongoDB connected to investiq database'))
-  .catch(err => console.error('MongoDB error:', err));
+async function startServer() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const mongoUri = process.env.MONGODB_URI ||
+    (isProduction ? '' : 'mongodb://localhost:27017/investiq');
 
-// Verify email (Gmail) credentials at startup — fails loudly here instead of
-// silently on a real user's first registration attempt.
-require('./utils/sendEmail').verifyEmailConfig();
+  if (!mongoUri) {
+    throw new Error('MONGODB_URI must be configured in production.');
+  }
 
-// Verify Razorpay credentials at startup — same reasoning.
-require('./routes/payment').verifyRazorpayConfig();
+  // Do not accept API traffic until the database is ready.
+  await mongoose.connect(mongoUri);
+  console.log('✅ MongoDB connected to investiq database');
 
-// Verify Groq (free AI) credentials at startup — same reasoning.
-require('./utils/groqClient').verifyGroqConfig();
+  // These checks report provider configuration problems but do not prevent
+  // the API from starting when optional integrations are unavailable.
+  require('./utils/sendEmail').verifyEmailConfig().catch((err) =>
+    console.error('Email configuration check failed:', err.message)
+  );
+  require('./routes/payment').verifyRazorpayConfig().catch((err) =>
+    console.error('Razorpay configuration check failed:', err.message)
+  );
+  require('./utils/groqClient').verifyGroqConfig().catch((err) =>
+    console.error('Groq configuration check failed:', err.message)
+  );
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 InvestIQ Server running on port ${PORT}`));
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, '0.0.0.0', () =>
+    console.log(`🚀 InvestIQ Server running on port ${PORT}`)
+  );
+}
+
+startServer().catch((err) => {
+  console.error('❌ InvestIQ startup failed:', err.message);
+  process.exit(1);
+});

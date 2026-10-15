@@ -1,0 +1,45 @@
+services:
+  - type: web
+    name: investiq-api
+    runtime: node
+    rootDir: backend
+    buildCommand: npm ci
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: ML_SERVER_URL
+        sync: false
+      - key: RESEND_API_KEY
+        sync: false
+      - key: EMAIL_FROM
+        sync: false
+      - key: EMAIL_USER
+        sync: false
+      - key: EMAIL_PASS
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: MERCHANT_UPI_ID
+        sync: false
+      - key: MERCHANT_NAME
+        sync: false
+
+  - type: web
+    name: investiq-ml
+    runtime: python
+    rootDir: backend/ml
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn ml_server:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
+    healthCheckPath: /health
