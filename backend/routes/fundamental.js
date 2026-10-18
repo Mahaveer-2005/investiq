@@ -162,14 +162,15 @@ async function fetchBharatStock(symbol) {
   const ticker = (symbol || '').toString().trim().toUpperCase().replace(/\\.(NS|BSE)$/i, '');
   const headers = { 'X-API-Key': apiKey, Accept: 'application/json' };
   try {
-    const [stockRes, financialRes] = await Promise.all([
+    const [stockRes, ratiosRes, financialRes] = await Promise.all([
       axios.get(`https://bharatstockapi.com/v1/stocks/${encodeURIComponent(ticker)}`, { headers, timeout: 12000 }),
+      axios.get(`https://bharatstockapi.com/v1/stocks/${encodeURIComponent(ticker)}/ratios`, { headers, timeout: 12000 }),
       axios.get(`https://bharatstockapi.com/v1/stocks/${encodeURIComponent(ticker)}/financials?period_type=annual&page=1&page_size=1`, { headers, timeout: 12000 }),
     ]);
     const stock = stockRes.data?.data || stockRes.data || {};
-    const metrics = stock.metrics || {};
+    const ratios = ratiosRes.data?.data || ratiosRes.data || {};
     const rows = financialRes.data?.data || financialRes.data?.results || (Array.isArray(financialRes.data) ? financialRes.data : []);
-    return { stock, metrics, financial: rows[0] || {} };
+    return { stock, ratios, financial: rows[0] || {} };
   } catch (e) {
     console.error('BharatStock fundamentals fetch failed:', e.response?.status || '', e.message);
     return null;
@@ -335,7 +336,7 @@ async function fetchFundamentals(symbol) {
   // Prefer BharatStock's documented Indian-market metrics/financial statements
   // when available; preserve Yahoo price history and existing response shape.
   if (bharat) {
-    const m = bharat.metrics || {};
+    const m = bharat.ratios || {};
     const s = bharat.stock || {};
     const f = bharat.financial || {};
     const pick = (...values) => values.find(v => v !== undefined && v !== null && v !== '') ;
@@ -352,12 +353,22 @@ async function fetchFundamentals(symbol) {
     result.eps = numberOr(pick(f.eps, m.eps), result.eps);
     result.revenue = numberOr(pick(f.revenue, m.revenue_ttm), result.revenue);
     result.netIncome = numberOr(pick(f.net_profit, m.net_profit_ttm), result.netIncome);
-    result.ebitda = numberOr(pick(m.ebitda), result.ebitda);
+    result.ebitda = numberOr(pick(m.ebitda, m.ebitda_margin), result.ebitda);
     result.roe = numberOr(pick(m.roe), result.roe);
     result.opm = numberOr(pick(m.operating_margin), result.opm);
     result.npm = numberOr(pick(m.net_margin), result.npm);
     result.de = numberOr(pick(m.debt_to_equity), result.de);
     result.totalDebt = numberOr(pick(m.total_debt), result.totalDebt);
+    result.w52High = numberOr(pick(m.week_52_high), result.w52High);
+    result.w52Low = numberOr(pick(m.week_52_low), result.w52Low);
+    result.dividendYield = numberOr(pick(m.dividend_yield), result.dividendYield);
+    result.ps = numberOr(pick(m.price_to_sales), result.ps);
+    result.evEbitda = numberOr(pick(m.ev_to_ebitda), result.evEbitda);
+    result.forwardPE = numberOr(pick(m.forward_pe), result.forwardPE);
+    result.pegRatio = numberOr(pick(m.peg_ratio), result.pegRatio);
+    result.cr = numberOr(pick(m.current_ratio), result.cr);
+    result.revenueGrowth = numberOr(pick(m.revenue_growth_yoy), result.revenueGrowth);
+    result.earningsGrowth = numberOr(pick(m.profit_growth_yoy), result.earningsGrowth);
     result.operatingCF = numberOr(pick(f.cash_flow_operating), result.operatingCF);
     if (f.cash_flow_operating != null && f.capex != null) {
       result.fcf = numberOr(f.cash_flow_operating, 0) - numberOr(f.capex, 0);
