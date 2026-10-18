@@ -44,7 +44,7 @@ let workingModel = null; // only ever set after a REAL completion succeeds with 
 // chat-completion models (audio transcription, TTS, moderation, etc.) —
 // filtered out before attempting, since trying them just wastes a call and
 // produces a confusing "does not support chat completions" error.
-const NON_CHAT_MODEL_HINTS = ['whisper', 'tts', 'guard', 'moderation', 'distil-whisper', 'playai'];
+const NON_CHAT_MODEL_HINTS = ['whisper', 'tts', 'guard', 'moderation', 'distil-whisper', 'playai', 'orpheus', 'canopylabs'];
 
 function isChatCapable(modelId) {
   const id = modelId.toLowerCase();
@@ -59,35 +59,45 @@ async function groqChatJSON({ prompt, maxTokens = 500, temperature = 0.4 }) {
   }
 
   const attempt = async (m) => {
-    try {
-      const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+    const request = async (useJsonMode) => {
+      const body = {
         model: m,
         messages: [{ role: 'user', content: prompt }],
         max_tokens: maxTokens,
         temperature,
-        response_format: { type: 'json_object' },
-      }, {
+      };
+      if (useJsonMode) body.response_format = { type: 'json_object' };
+      const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', body, {
         headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
         timeout: 20000,
       });
-      return extractJSON(response.data.choices[0].message.content);
-    } catch (err) {
-      const apiMsg = err.response?.data?.error?.message || '';
-      // Some models reject strict JSON mode outright (or produce output that
-      // fails Groq's own JSON-schema validation) — retry the SAME model
-      // once without response_format, relying on the prompt's own "respond
-      // ONLY with JSON" instruction plus our lenient extractJSON() parser.
-      if (/failed to validate json|failed_generation|response_format/i.test(apiMsg)) {
-        const response2 = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
+      return response.data.choices?.[0]?.message?.content || '';
+    };
+
+    try {
+      const text = await request(true);
+      try {
+        return extractJSON(text);
+      } catch (parseErr) {
+        // Some free models return malformed JSON even when JSON mode is requested.
+        // Retry once with explicit stricter instructions and no response_format.
+        const retryPrompt = `${prompt}\n\nIMPORTANT: Output exactly one valid JSON object. Do not include markdown, comments, or text before/after the JSON.`;
+        const response = await axios.post('https://api.groq.com/openai/v1/chat/completions', {
           model: m,
-          messages: [{ role: 'user', content: prompt }],
+          messages: [{ role: 'user', content: retryPrompt }],
           max_tokens: maxTokens,
-          temperature,
+          temperature: 0.1,
         }, {
           headers: { 'Authorization': `Bearer ${process.env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
           timeout: 20000,
         });
-        return extractJSON(response2.data.choices[0].message.content);
+        return extractJSON(response.data.choices?.[0]?.message?.content || '');
+      }
+    } catch (err) {
+      const apiMsg = err.response?.data?.error?.message || '';
+      if (/failed to validate json|failed_generation|response_format/i.test(apiMsg)) {
+        const text = await request(false);
+        return extractJSON(text);
       }
       throw err;
     }
