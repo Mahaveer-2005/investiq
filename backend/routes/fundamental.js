@@ -155,6 +155,27 @@ async function fetchQuote(yahoo) {
   }
 }
 
+// ── BharatStock fallback for fundamentals (API key stays server-side) ──────────
+async function fetchBharatStock(symbol) {
+  const apiKey = process.env.BHARATSTOCK_API_KEY;
+  if (!apiKey) return null;
+  const ticker = (symbol || '').toString().trim().toUpperCase().replace(/\\.(NS|BSE)$/i, '');
+  const headers = { 'X-API-Key': apiKey, Accept: 'application/json' };
+  try {
+    const [stockRes, financialRes] = await Promise.all([
+      axios.get(`https://bharatstockapi.com/v1/stocks/${encodeURIComponent(ticker)}`, { headers, timeout: 12000 }),
+      axios.get(`https://bharatstockapi.com/v1/stocks/${encodeURIComponent(ticker)}/financials?period_type=annual&page=1&page_size=1`, { headers, timeout: 12000 }),
+    ]);
+    const stock = stockRes.data?.data || stockRes.data || {};
+    const metrics = stock.metrics || {};
+    const rows = financialRes.data?.data || financialRes.data?.results || (Array.isArray(financialRes.data) ? financialRes.data : []);
+    return { stock, metrics, financial: rows[0] || {} };
+  } catch (e) {
+    console.error('BharatStock fundamentals fetch failed:', e.response?.status || '', e.message);
+    return null;
+  }
+}
+
 // ── Main fetcher combining all sources ────────────────────────────────────────
 async function fetchFundamentals(symbol) {
   const yahoo = toYahoo(symbol);
@@ -165,10 +186,11 @@ async function fetchFundamentals(symbol) {
   console.log(`Fetching fundamentals for ${yahoo}...`);
 
   // Fetch all sources in parallel
-  const [chartData, quoteSummary, quoteData] = await Promise.all([
+  const [chartData, quoteSummary, quoteData, bharat] = await Promise.all([
     fetchChartData(yahoo),
     fetchQuoteSummary(yahoo),
     fetchQuote(yahoo),
+    fetchBharatStock(symbol),
   ]);
 
   if (!chartData && !quoteData && !quoteSummary) {
@@ -310,7 +332,45 @@ async function fetchFundamentals(symbol) {
     priceHistory: chartData?.priceHistory || [],
   };
 
-  console.log(`Fundamentals for ${symbol}: price=${result.price}, pe=${result.pe}, revenue=${result.revenue}, npm=${result.npm}`);
+  // Prefer BharatStock's documented Indian-market metrics/financial statements
+  // when available; preserve Yahoo price history and existing response shape.
+  if (bharat) {
+    const m = bharat.metrics || {};
+    const s = bharat.stock || {};
+    const f = bharat.financial || {};
+    const pick = (...values) => values.find(v => v !== undefined && v !== null && v !== '') ;
+    const numberOr = (value, fallback) => {
+      const n = Number(value);
+      return value !== undefined && value !== null && value !== '' && Number.isFinite(n) ? n : fallback;
+    };
+    result.name = pick(s.company_name, s.companyName, result.name);
+    result.sector = pick(s.sector, result.sector);
+    result.price = numberOr(pick(s.latest_price?.close, s.latest_price?.price, s.price, m.price), result.price);
+    result.marketCap = numberOr(pick(m.market_cap, s.market_cap), result.marketCap);
+    result.pe = numberOr(pick(m.pe_ratio), result.pe);
+    result.pb = numberOr(pick(m.pb_ratio), result.pb);
+    result.eps = numberOr(pick(f.eps, m.eps), result.eps);
+    result.revenue = numberOr(pick(f.revenue, m.revenue_ttm), result.revenue);
+    result.netIncome = numberOr(pick(f.net_profit, m.net_profit_ttm), result.netIncome);
+    result.ebitda = numberOr(pick(m.ebitda), result.ebitda);
+    result.roe = numberOr(pick(m.roe), result.roe);
+    result.opm = numberOr(pick(m.operating_margin), result.opm);
+    result.npm = numberOr(pick(m.net_margin), result.npm);
+    result.de = numberOr(pick(m.debt_to_equity), result.de);
+    result.totalDebt = numberOr(pick(m.total_debt), result.totalDebt);
+    result.operatingCF = numberOr(pick(f.cash_flow_operating), result.operatingCF);
+    if (f.cash_flow_operating != null && f.capex != null) {
+      result.fcf = numberOr(f.cash_flow_operating, 0) - numberOr(f.capex, 0);
+    }
+    result.dataQuality = {
+      ...result.dataQuality,
+      ratiosData: true,
+      note: null,
+      source: 'BharatStock API',
+    };
+  }
+
+  console.log(`Fundamentals for ${symbol}: price=${result.price}, pe=${result.pe}, revenue=${result.revenue}, npm=${result.npm}, bharatStock=${!!bharat}`);
   cache.set(key, result, 3600);
   return result;
 }
