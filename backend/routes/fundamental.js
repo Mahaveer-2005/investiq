@@ -360,8 +360,10 @@ async function fetchFundamentals(symbol) {
     result.ebitda = numberOr(pick(m.ebitda, f.ebitda), result.ebitda);
     // Map common balance-sheet debt aliases; do not present missing data as confirmed zero.
     const reportedDebt = pick(m.total_debt, f.total_debt, f.total_borrowings, f.borrowings, f.long_term_borrowings, f.short_term_borrowings, f.long_term_debt, f.short_term_debt);
-    result.totalDebt = reportedDebt !== undefined ? numberOr(reportedDebt, null) : null;
-    result.totalEquity = numberOr(pick(f.total_equity, f.total_stockholders_equity, f.total_stockholder_equity), result.totalEquity);
+    result.totalDebt = reportedDebt !== undefined ? numberOr(reportedDebt, null) : (result.totalDebt > 0 ? result.totalDebt : null);
+    result.totalEquity = numberOr(pick(f.total_equity, f.total_stockholders_equity, f.total_stockholder_equity, f.other_equity, f.shareholders_funds, f.net_worth), result.totalEquity);
+    result.totalAssets = numberOr(pick(f.total_assets, f.totalAssets, f.assets), result.totalAssets);
+    result.cr = numberOr(pick(m.current_ratio, m.currentRatio), result.cr);
     result.roe = numberOr(pick(m.roe), result.roe);
     result.opm = numberOr(pick(m.operating_margin), result.opm);
     result.npm = numberOr(pick(m.net_margin), result.npm);
