@@ -539,9 +539,10 @@ router.get('/', auth, async (req, res) => {
         const live = await getLivePrice(s.symbol);
         return {
           ...s,
-          price:     live.price     || 0,
-          change:    live.change    || 0,
-          changePct: live.changePct || 0,
+          price: live?.price ?? null,
+          priceAvailable: Number(live?.price) > 0,
+          change: live?.change ?? 0,
+          changePct: live?.changePct ?? 0,
         };
       })
     );
