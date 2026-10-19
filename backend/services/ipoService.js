@@ -71,13 +71,13 @@ function describeAxiosError(err) {
 }
 
 function normalizeNseIpo(raw, status) {
-  const symbol = (raw.symbol || raw.companyName || raw.company_name || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+  const symbol = (raw.symbol || raw.htmSym || raw.htmlSym || raw.companyName || raw.company_name || raw.company || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
 
   // NSE's real payload gives price as a text string like "Rs.408 to Rs.429"
   // — parse the actual numbers out, requiring a match to START with a digit
   // (NOT [\d.]+, which was the bug: that greedily grabbed the period right
   // after "Rs." as part of the number, turning "408" into "0.408").
-  const priceRaw = String(raw.issuePrice || raw.issuePriceRange || raw.finalIssuePrice || raw.offerPrice || '');
+  const priceRaw = String(raw.issuePrice || raw.issuePriceRange || raw.priceRange || raw.price_range || raw.finalIssuePrice || raw.offerPrice || '');
   const priceNums = priceRaw.match(/\d+(?:\.\d+)?/g)?.map(Number) || [];
   let min = priceNums[0] || Number(raw.issuePriceLow || raw.minPrice || 0);
   let max = priceNums[1] || priceNums[0] || Number(raw.issuePriceHigh || raw.maxPrice || min);
@@ -101,12 +101,12 @@ function normalizeNseIpo(raw, status) {
     normalizeNseIpo._loggedStatuses.add(status);
   }
 
-  const firstValue = (...values) => values.find(v => v !== undefined && v !== null && v !== '');
+  const firstValue = (...values) => values.find(v => v !== undefined && v !== null && v !== '' && !['-', 'N/A', 'NA', 'null'].includes(String(v).trim()));
   const lotRaw = firstValue(raw.marketLot, raw.marketLotSize, raw.lotSize, raw.lot_size, raw.minimumLot, raw.minLotSize, raw.minimumBidLot, raw.bidLot, raw.bidLotSize, raw.market_lot, raw.market_lot_size, raw.minBidQty, raw.minimumBidQuantity, raw.minQuantity, raw.applicationSize, raw.applicationLot, raw.lot_size_shares);
   const lotSize = Number(lotRaw) > 0 ? Number(lotRaw) : null;
-  const sharesRaw = firstValue(raw.noOfSharesOffered, raw.noOfShares, raw.no_of_shares_offered, raw.no_of_shares, raw.issueSizeShares, raw.sharesOffered, raw.totalShares, raw.total_shares);
+  const sharesRaw = firstValue(raw.noOfSharesOffered, raw.noOfShares, raw.no_of_shares_offered, raw.no_of_shares, raw.issueSizeShares, raw.sharesOffered, raw.totalShares, raw.total_shares, (Number(raw.issueSize) >= 1000000 ? raw.issueSize : null));
   const sharesOffered = Number(sharesRaw) > 0 ? Number(sharesRaw) : null;
-  const issueSizeRaw = firstValue(raw.issueSizeValue, raw.issueSizeAmount, raw.issueSizeCr, raw.issue_size_cr, raw.issueSize, raw.issue_size, raw.issueSizeInCrores, raw.issue_size_crore);
+  const issueSizeRaw = firstValue(raw.issueSizeValue, raw.issueSizeAmount, raw.issueSizeCr, raw.issue_size_cr, raw.issueSizeInCrores, raw.issue_size_crore, (typeof raw.issueSize === 'string' && /₹|rs\\.?|crore|cr\\b|billion|million/i.test(raw.issueSize) ? raw.issueSize : null), (typeof raw.issue_size === 'string' && /₹|rs\\.?|crore|cr\\b|billion|million/i.test(raw.issue_size) ? raw.issue_size : null));
   const issueSizeText = typeof issueSizeRaw === 'string' && /₹|rs\.?|crore|cr\b|billion|million/i.test(issueSizeRaw)
     ? issueSizeRaw
     : (Number(issueSizeRaw) > 0 && Number(issueSizeRaw) < 1000000 ? `₹${Number(issueSizeRaw)} Cr` : null);
@@ -122,8 +122,8 @@ function normalizeNseIpo(raw, status) {
     lotSize,
     sharesOffered,
     issueSize: issueSizeText || (issueSizeCr ? `₹${issueSizeCr} Cr` : (sharesOffered ? `${sharesOffered.toLocaleString('en-IN')} shares` : null)),
-    openDate: firstValue(raw.issueStartDate, raw.issueOpenDate, raw.openDate, raw.startDate, raw.issue_start_date, raw.biddingStartDate, raw.biddingStartDateTime, raw.offerStartDate, dates.open_date, dates.openDate, dates.start),
-    closeDate: firstValue(raw.issueEndDate, raw.issueCloseDate, raw.closeDate, raw.endDate, raw.issue_end_date, raw.biddingEndDate, raw.biddingEndDateTime, raw.offerEndDate, dates.close_date, dates.closeDate, dates.end),
+    openDate: firstValue(raw.issueStartDate, raw.ipoStartDate, raw.issueOpenDate, raw.openDate, raw.startDate, raw.issue_start_date, raw.biddingStartDate, raw.biddingStartDateTime, raw.offerStartDate, dates.open_date, dates.openDate, dates.start),
+    closeDate: firstValue(raw.issueEndDate, raw.ipoEndDate, raw.issueCloseDate, raw.closeDate, raw.endDate, raw.issue_end_date, raw.biddingEndDate, raw.biddingEndDateTime, raw.offerEndDate, dates.close_date, dates.closeDate, dates.end),
     listingDate: firstValue(raw.listingDate, raw.dateOfListing, raw.listing_date, raw.listing_date_expected, raw.expectedListingDate, raw.expected_listing_date, dates.listing_date, dates.listingDate),
     status,
     registrar: raw.registrar || null, // e.g. "KFin Technologies", "Link Intime (MUFG Intime)"
