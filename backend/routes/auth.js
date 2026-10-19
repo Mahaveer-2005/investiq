@@ -81,15 +81,23 @@ router.post('/register', async (req, res) => {
 
     const emailResult = await sendOTPEmail(normalizedEmail, user.name, otp);
 
+    if (!emailResult.delivered && process.env.NODE_ENV === 'production') {
+      return res.status(503).json({
+        success: false,
+        requiresVerification: true,
+        email: normalizedEmail,
+        message: 'Your account was created, but we could not send the verification email. Please try again shortly or contact support.',
+      });
+    }
+
     res.status(201).json({
       success: true,
       requiresVerification: true,
       email: normalizedEmail,
       message: emailResult.delivered
         ? `We sent a 6-digit verification code to ${normalizedEmail}.`
-        : `Account created. Email delivery is not configured on this server — check server logs for your OTP (dev mode).`,
-      // Only exposed when email could not actually be delivered, so testers/devs aren't locked out.
-      devOtp: emailResult.devMode ? otp : undefined,
+        : `Email delivery is not configured. Development OTP: ${otp}`,
+      devOtp: process.env.NODE_ENV !== 'production' && emailResult.devMode ? otp : undefined,
     });
   } catch (err) {
     console.error('REGISTER ERROR:', err.message);
@@ -168,10 +176,17 @@ router.post('/resend-otp', async (req, res) => {
 
     const emailResult = await sendOTPEmail(normalizedEmail, user.name, otp);
 
+    if (!emailResult.delivered && process.env.NODE_ENV === 'production') {
+      return res.status(503).json({
+        success: false,
+        message: 'We could not send a new verification email. Please try again shortly.',
+      });
+    }
+
     res.json({
       success: true,
-      message: emailResult.delivered ? 'A new OTP has been sent to your email.' : 'New OTP generated — check server logs (dev mode).',
-      devOtp: emailResult.devMode ? otp : undefined,
+      message: emailResult.delivered ? 'A new OTP has been sent to your email.' : `Email delivery is not configured. Development OTP: ${otp}`,
+      devOtp: process.env.NODE_ENV !== 'production' && emailResult.devMode ? otp : undefined,
     });
   } catch (err) {
     res.status(500).json({ message: err.message });
