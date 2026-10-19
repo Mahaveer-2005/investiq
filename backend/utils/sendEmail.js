@@ -14,10 +14,11 @@ const nodemailer = require('nodemailer');
 // It falls back to Gmail SMTP (if configured) and finally to console
 // logging (dev mode) so nothing ever hard-fails.
 //
-// Priority: RESEND_API_KEY > EMAIL_USER/EMAIL_PASS (SMTP) > console fallback
+// Priority: explicit BREVO API > explicit Resend API > explicit SMTP > configured provider > console fallback
 // ─────────────────────────────────────────────────────────────────────────
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const BREVO_API_KEY = process.env.BREVO_API_KEY;
 // Resend's shared sandbox sender — works immediately with zero setup,
 // before you've verified your own domain. Swap to your own verified domain
 // address once you have one (see backend/.env.example for instructions).
@@ -41,12 +42,12 @@ function getSmtpTransporter() {
 }
 
 function activeProvider() {
-  // Explicit selection lets a free Gmail App Password setup work even when
-  // an old RESEND_API_KEY remains configured in the hosting dashboard.
   const selected = (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
-  if (selected === 'smtp' && process.env.EMAIL_USER && process.env.EMAIL_PASS) return 'smtp';
+  if (selected === 'brevo' && BREVO_API_KEY) return 'brevo';
   if (selected === 'resend' && RESEND_API_KEY) return 'resend';
-  if (selected === 'smtp' || selected === 'resend') return 'console';
+  if (selected === 'smtp' && process.env.EMAIL_USER && process.env.EMAIL_PASS) return 'smtp';
+  if (['brevo', 'resend', 'smtp'].includes(selected)) return 'console';
+  if (BREVO_API_KEY) return 'brevo';
   if (RESEND_API_KEY) return 'resend';
   if (process.env.EMAIL_USER && process.env.EMAIL_PASS) return 'smtp';
   return 'console';
@@ -61,6 +62,21 @@ async function sendViaResend(to, subject, html) {
   );
 }
 
+async function sendViaBrevo(to, subject, html) {
+  const fromSetting = process.env.EMAIL_FROM || `InvestIQ <${process.env.EMAIL_USER || ''}>`;
+  const match = fromSetting.match(/^\s*(.*?)\s*<([^<>\s]+@[^<>\s]+)>\s*$/);
+  const senderEmail = match ? match[2] : fromSetting.trim();
+  const senderName = match && match[1] ? match[1].replace(/^\"|\"$/g, '') : 'InvestIQ';
+  if (!senderEmail || !senderEmail.includes('@')) {
+    throw new Error('Set EMAIL_FROM to a sender email verified in Brevo');
+  }
+  await axios.post(
+    'https://api.brevo.com/v3/smtp/email',
+    { sender: { name: senderName, email: senderEmail }, to: [{ email: to }], subject, htmlContent: html },
+    { headers: { 'api-key': BREVO_API_KEY, 'Content-Type': 'application/json', accept: 'application/json' }, timeout: 15000 }
+  );
+}
+
 async function sendViaSmtp(to, subject, html) {
   const t = getSmtpTransporter();
   await t.sendMail({ from: process.env.EMAIL_FROM || `InvestIQ <${process.env.EMAIL_USER}>`, to, subject, html });
@@ -72,6 +88,11 @@ async function sendViaSmtp(to, subject, html) {
 async function send(to, subject, html, devFallbackText) {
   const provider = activeProvider();
   try {
+    if (provider === 'brevo') {
+      await sendViaBrevo(to, subject, html);
+      console.log(`📧 [Brevo] Email sent to ${to}`);
+      return { delivered: true, devMode: false, provider };
+    }
     if (provider === 'resend') {
       await sendViaResend(to, subject, html);
       console.log(`📧 [Resend] Email sent to ${to}`);
@@ -134,6 +155,24 @@ async function verifyEmailConfig() {
     console.log('ℹ️  No usable email provider configured (check EMAIL_PROVIDER, RESEND_API_KEY, or EMAIL_USER/EMAIL_PASS) — email delivery is unavailable.');
     console.log('   → Add RESEND_API_KEY to backend/.env for real delivery to any user\'s inbox. See REAL_MODE_SETUP.md.');
     return false;
+  }
+
+  if (provider === 'brevo') {
+    if (!process.env.EMAIL_FROM) {
+      console.error('❌ BREVO CONFIG ERROR — set EMAIL_FROM to an email address verified in Brevo.');
+      return false;
+    }
+    try {
+      await axios.get('https://api.brevo.com/v3/account', {
+        headers: { 'api-key': BREVO_API_KEY, accept: 'application/json' },
+        timeout: 8000,
+      });
+      console.log(`✅ Brevo API configured — sender is ${process.env.EMAIL_FROM}`);
+      return true;
+    } catch (err) {
+      console.error('❌ BREVO CONFIG ERROR — check BREVO_API_KEY:', err.response?.status, err.response?.data?.message || err.message);
+      return false;
+    }
   }
 
   if (provider === 'resend') {
