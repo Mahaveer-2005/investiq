@@ -400,11 +400,11 @@ async function liveToRichShape(live) {
   let dayChange = null;
   if (live.status === 'listed' && live.symbol) {
     try {
-      const { getLivePrice } = require('./stocks');
-      const quote = await getLivePrice(live.symbol);
-      currentPrice = quote?.price || null;
-      dayChange = quote?.changePct != null ? quote.changePct : null;
-    } catch { /* stocks.js doesn't export getLivePrice — handled below */ }
+      // Use the IPO route's Yahoo Finance lookup; do not call the unrelated
+      // routes/stocks module (it does not export getLivePrice).
+      const quote = await fetchLivePrice(live.symbol);
+      currentPrice = Number(quote) > 0 ? Number(quote) : null;
+    } catch { /* Current price remains unknown rather than fabricated. */ }
   }
 
   const isListed = live.status === 'listed';
@@ -450,7 +450,7 @@ async function liveToRichShape(live) {
     peers: [],
     verdict: 'NEUTRAL', verdictColor: '#f59e0b', verdictEmoji: '🤖',
     verdictReason: 'No pre-written verdict for live-fetched IPOs — use "Get Fresh AI Analysis" for a real-time AI verdict.',
-    source: 'live_nse',
+    source: live.source === 'BSE_LIVE' ? 'live_bse' : 'live_nse',
   };
 }
 
