@@ -358,13 +358,14 @@ async function fetchFundamentals(symbol) {
     result.netIncome = numberOr(pick(f.net_profit, m.net_profit_ttm), result.netIncome);
     // Absolute EBITDA must come from an absolute-value field; never treat an EBITDA margin (%) as currency.
     result.ebitda = numberOr(pick(m.ebitda, f.ebitda), result.ebitda);
-    result.totalDebt = numberOr(pick(m.total_debt, f.total_debt), result.totalDebt);
+    // Map common balance-sheet debt aliases; do not present missing data as confirmed zero.
+    const reportedDebt = pick(m.total_debt, f.total_debt, f.total_borrowings, f.borrowings, f.long_term_borrowings, f.short_term_borrowings, f.long_term_debt, f.short_term_debt);
+    result.totalDebt = reportedDebt !== undefined ? numberOr(reportedDebt, null) : null;
     result.totalEquity = numberOr(pick(f.total_equity, f.total_stockholders_equity, f.total_stockholder_equity), result.totalEquity);
     result.roe = numberOr(pick(m.roe), result.roe);
     result.opm = numberOr(pick(m.operating_margin), result.opm);
     result.npm = numberOr(pick(m.net_margin), result.npm);
-    result.de = numberOr(pick(m.debt_to_equity), result.de);
-    result.totalDebt = numberOr(pick(m.total_debt), result.totalDebt);
+    result.de = pick(m.debt_to_equity) !== undefined ? numberOr(m.debt_to_equity, null) : (result.totalDebt !== null && Number(result.totalEquity) > 0 ? +(Number(result.totalDebt) / Number(result.totalEquity)).toFixed(2) : null);
     result.w52High = numberOr(pick(m.week_52_high), result.w52High);
     result.w52Low = numberOr(pick(m.week_52_low), result.w52Low);
     result.dividendYield = numberOr(pick(m.dividend_yield), result.dividendYield);
