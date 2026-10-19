@@ -381,6 +381,14 @@ async function fetchFundamentals(symbol) {
     };
   }
 
+  // Recalculate margins after source overrides so the displayed ratios match the final values.
+  if (Number(result.revenue) > 0 && Number(result.netIncome) !== 0) {
+    result.npm = +((Number(result.netIncome) / Number(result.revenue)) * 100).toFixed(2);
+  }
+  if (Number(result.revenue) > 0 && Number(result.ebitda) > 0) {
+    result.opm = +((Number(result.ebitda) / Number(result.revenue)) * 100).toFixed(2);
+  }
+
   console.log(`Fundamentals for ${symbol}: price=${result.price}, pe=${result.pe}, revenue=${result.revenue}, npm=${result.npm}, bharatStock=${!!bharat}`);
   cache.set(key, result, 3600);
   return result;
