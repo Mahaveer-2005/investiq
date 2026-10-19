@@ -226,12 +226,16 @@ export default function Stocks() {
                     }}>{stock.sector}</span>
                   </td>
                   <td style={{ ...s.td, fontWeight: 700 }}>
-                    ₹{(stock.price || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    {Number(stock.price) > 0
+                      ? `₹${Number(stock.price).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : <span style={{ color: '#94a3b8', fontWeight: 500 }}>Price unavailable</span>}
                   </td>
                   <td style={s.td}>
-                    <span style={(stock.change || 0) >= 0 ? s.pos : s.neg}>
-                      {(stock.change || 0) >= 0 ? '▲' : '▼'} {Math.abs(stock.changePercent || 0).toFixed(2)}%
-                    </span>
+                    {Number(stock.price) > 0 ? (
+                      <span style={(stock.change || 0) >= 0 ? s.pos : s.neg}>
+                        {(stock.change || 0) >= 0 ? '▲' : '▼'} {Math.abs(Number(stock.changePct ?? stock.changePercent ?? 0)).toFixed(2)}%
+                      </span>
+                    ) : <span style={{ color: '#64748b' }}>—</span>}
                   </td>
                   <td style={{ ...s.td, color: '#64748b', fontSize: 12 }}>
                     {stock.volume > 0 ? `${(stock.volume / 100000).toFixed(1)}L` : '—'}
