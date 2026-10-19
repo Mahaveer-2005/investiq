@@ -441,30 +441,48 @@ const STOCKS = ALL_STOCKS.filter((s, i, a) => a.findIndex(x => x.symbol === s.sy
 
 // ── Fetch live price ──────────────────────────────────────────────────────
 async function getLivePrice(symbol) {
-  const key = `price_${symbol}`;
-  const c   = cache.get(key);
-  if (c) return c;
-  try {
-    const sym = symbol.includes('.') ? symbol : `${symbol}.NS`;
-    const res = await axios.get(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=1d`,
-      { headers:{ 'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }, timeout:7000 }
-    );
-    const meta  = res.data?.chart?.result?.[0]?.meta;
-    const price = meta?.regularMarketPrice;
-    const prev  = meta?.chartPreviousClose || price;
-    const chg   = price && prev ? +(price - prev).toFixed(2) : 0;
-    const chgP  = prev ? +((chg / prev) * 100).toFixed(2) : 0;
-    const name  = meta?.longName || meta?.shortName || symbol;
-    if (price) {
-      const data = { price: +price.toFixed(2), change: chg, changePct: chgP, name };
-      cache.set(key, data, 120);
-      return data;
-    }
-    return { price: null, name: symbol, change: 0, changePct: 0 };
-  } catch {
-    return { price: null, name: symbol, change: 0, changePct: 0 };
+  const normalized = String(symbol || '').trim().toUpperCase();
+  const key = `price_${normalized}`;
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  // Prefer NSE, then try BSE. Some securities and newly changed symbols
+  // are not available under the first exchange suffix.
+  const candidates = normalized.includes('.')
+    ? [normalized]
+    : [`${normalized}.NS`, `${normalized}.BO`];
+
+  for (const sym of candidates) {
+    try {
+      const res = await axios.get(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`,
+        { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36', 'Accept': 'application/json' }, timeout: 7000 }
+      );
+      const result = res.data?.chart?.result?.[0];
+      const meta = result?.meta;
+      const closes = result?.indicators?.quote?.[0]?.close || [];
+      const lastClose = [...closes].reverse().find(v => Number.isFinite(v) && v > 0);
+      const price = Number(meta?.regularMarketPrice || lastClose || 0);
+      const prev = Number(meta?.chartPreviousClose || meta?.previousClose || price);
+      if (price > 0) {
+        const change = prev > 0 ? +(price - prev).toFixed(2) : 0;
+        const data = {
+          price: +price.toFixed(2),
+          change,
+          changePct: prev > 0 ? +((change / prev) * 100).toFixed(2) : 0,
+          name: meta?.longName || meta?.shortName || normalized,
+          exchangeSymbol: sym,
+          priceAvailable: true,
+        };
+        cache.set(key, data, 120);
+        return data;
+      }
+    } catch { /* Try the next exchange symbol. */ }
   }
+
+  // Keep a consistent result shape; callers can show an unavailable state
+  // instead of throwing or silently interpreting a missing quote as zero.
+  return { price: null, name: normalized, change: 0, changePct: 0, priceAvailable: false };
 }
 
 // ── Recalculate avgPrice from transactions ────────────────────────────────
@@ -528,7 +546,7 @@ router.get('/', auth, async (req, res) => {
       })
     );
     const stocks = results
-      .filter(r => r.status === 'fulfilled' && r.value.price > 0)
+      .filter(r => r.status === 'fulfilled')
       .map(r => r.value);
     res.json(stocks);
   } catch (err) {
