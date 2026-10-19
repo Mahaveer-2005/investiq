@@ -101,9 +101,17 @@ function normalizeNseIpo(raw, status) {
     normalizeNseIpo._loggedStatuses.add(status);
   }
 
-  const lotSize = Number(raw.marketLot || raw.marketLotSize || raw.lotSize || raw.lot_size || raw.minimumLot || raw.minLotSize || raw.minimumBidLot || raw.bidLot || 0) || null;
-  const sharesOffered = Number(raw.noOfSharesOffered || raw.noOfShares || raw.no_of_shares_offered || raw.no_of_shares || raw.issueSizeShares || raw.issueSize || 0) || null;
+  const firstValue = (...values) => values.find(v => v !== undefined && v !== null && v !== '');
+  const lotRaw = firstValue(raw.marketLot, raw.marketLotSize, raw.lotSize, raw.lot_size, raw.minimumLot, raw.minLotSize, raw.minimumBidLot, raw.bidLot, raw.bidLotSize, raw.market_lot, raw.market_lot_size, raw.minBidQty, raw.minimumBidQuantity, raw.minQuantity, raw.applicationSize, raw.applicationLot, raw.lot_size_shares);
+  const lotSize = Number(lotRaw) > 0 ? Number(lotRaw) : null;
+  const sharesRaw = firstValue(raw.noOfSharesOffered, raw.noOfShares, raw.no_of_shares_offered, raw.no_of_shares, raw.issueSizeShares, raw.sharesOffered, raw.totalShares, raw.total_shares);
+  const sharesOffered = Number(sharesRaw) > 0 ? Number(sharesRaw) : null;
+  const issueSizeRaw = firstValue(raw.issueSizeValue, raw.issueSizeAmount, raw.issueSizeCr, raw.issue_size_cr, raw.issueSize, raw.issue_size, raw.issueSizeInCrores, raw.issue_size_crore);
+  const issueSizeText = typeof issueSizeRaw === 'string' && /₹|rs\.?|crore|cr\b|billion|million/i.test(issueSizeRaw)
+    ? issueSizeRaw
+    : (Number(issueSizeRaw) > 0 && Number(issueSizeRaw) < 1000000 ? `₹${Number(issueSizeRaw)} Cr` : null);
   const issueSizeCr = sharesOffered && max ? +(sharesOffered * max / 1e7).toFixed(1) : null;
+  const dates = raw.timeline || raw.dates || {};
 
   return {
     id: `ipo_${symbol || Math.random().toString(36).slice(2, 8)}`,
@@ -113,10 +121,10 @@ function normalizeNseIpo(raw, status) {
     priceRange: { min, max },
     lotSize,
     sharesOffered,
-    issueSize: issueSizeCr ? `₹${issueSizeCr} Cr` : (sharesOffered ? `${sharesOffered.toLocaleString('en-IN')} shares` : null),
-    openDate: raw.issueStartDate || raw.issueOpenDate || raw.openDate || raw.startDate || raw.issue_start_date || raw.biddingStartDate || null,
-    closeDate: raw.issueEndDate || raw.issueCloseDate || raw.closeDate || raw.endDate || raw.issue_end_date || raw.biddingEndDate || null,
-    listingDate: raw.listingDate || raw.dateOfListing || raw.listing_date || raw.listing_date_expected || raw.expectedListingDate || null,
+    issueSize: issueSizeText || (issueSizeCr ? `₹${issueSizeCr} Cr` : (sharesOffered ? `${sharesOffered.toLocaleString('en-IN')} shares` : null)),
+    openDate: firstValue(raw.issueStartDate, raw.issueOpenDate, raw.openDate, raw.startDate, raw.issue_start_date, raw.biddingStartDate, raw.biddingStartDateTime, raw.offerStartDate, dates.open_date, dates.openDate, dates.start),
+    closeDate: firstValue(raw.issueEndDate, raw.issueCloseDate, raw.closeDate, raw.endDate, raw.issue_end_date, raw.biddingEndDate, raw.biddingEndDateTime, raw.offerEndDate, dates.close_date, dates.closeDate, dates.end),
+    listingDate: firstValue(raw.listingDate, raw.dateOfListing, raw.listing_date, raw.listing_date_expected, raw.expectedListingDate, raw.expected_listing_date, dates.listing_date, dates.listingDate),
     status,
     registrar: raw.registrar || null, // e.g. "KFin Technologies", "Link Intime (MUFG Intime)"
     source: 'NSE_LIVE',
@@ -137,20 +145,25 @@ const BSE_HEADERS = {
 
 function normalizeBseIpo(raw) {
   const symbol = (raw.SCRIP_NAME || raw.Company_Name || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
-  const min = Number(raw.Price_Range_Min || raw.MinPrice || 0);
-  const max = Number(raw.Price_Range_Max || raw.MaxPrice || min);
+  const min = Number(raw.Price_Range_Min || raw.MinPrice || raw.Price_Min || raw.Issue_Price_Min || 0);
+  const max = Number(raw.Price_Range_Max || raw.MaxPrice || raw.Price_Max || raw.Issue_Price_Max || min);
   const today = new Date().toISOString().slice(0, 10);
-  const open  = raw.Start_Date ? new Date(raw.Start_Date).toISOString().slice(0, 10) : null;
-  const close = raw.End_Date   ? new Date(raw.End_Date).toISOString().slice(0, 10)   : null;
+  const rawOpen = raw.Start_Date || raw.Open_Date || raw.Issue_Open_Date || raw.Bidding_Start_Date || raw.OpenDate;
+  const rawClose = raw.End_Date || raw.Close_Date || raw.Issue_Close_Date || raw.Bidding_End_Date || raw.CloseDate;
+  const open  = rawOpen ? new Date(rawOpen).toISOString().slice(0, 10) : null;
+  const close = rawClose ? new Date(rawClose).toISOString().slice(0, 10) : null;
+  const rawLot = raw.Lot_Size || raw.LotSize || raw.Market_Lot || raw.Minimum_Lot || raw.Minimum_Quantity;
+  const rawIssueSize = raw.Issue_Size || raw.IssueSize || raw.Issue_Size_Cr || raw.Issue_Size_Crore || null;
   const status = close && close < today ? 'listed' : (open && open <= today ? 'active' : 'upcoming');
   return {
     id: `ipo_bse_${symbol || Math.random().toString(36).slice(2, 8)}`,
     company: raw.Company_Name || raw.SCRIP_NAME || 'Unknown',
     symbol, sector: raw.Sector || 'General',
     priceRange: { min, max },
-    lotSize: Number(raw.Lot_Size || 0) || null,
-    issueSize: raw.Issue_Size || null,
-    openDate: open, closeDate: close, listingDate: null,
+    lotSize: Number(rawLot) > 0 ? Number(rawLot) : null,
+    issueSize: rawIssueSize ? (typeof rawIssueSize === 'number' ? `₹${rawIssueSize} Cr` : rawIssueSize) : null,
+    openDate: open, closeDate: close,
+    listingDate: raw.Listing_Date || raw.ListingDate || raw.Expected_Listing_Date || raw.ExpectedListingDate || null,
     status, registrar: raw.Registrar || null, source: 'BSE_LIVE',
   };
 }
@@ -315,18 +328,58 @@ async function enrichWithIpoGuru(baseRows) {
 }
 
 async function fetchLiveIPOs() {
-  const sources = [
-    { key: 'nse',       fn: fetchLiveFromNSE },
-    { key: 'bse',       fn: fetchLiveFromBSE },
-    { key: 'ipoguru',   fn: fetchLiveFromIpoGuru },
+  // NSE often returns rows with incomplete fields while BSE has complementary
+  // dates, lot sizes or issue sizes. Query both feeds and merge them instead
+  // of stopping at the first non-empty response.
+  const [nseResult, bseResult] = await Promise.allSettled([fetchLiveFromNSE(), fetchLiveFromBSE()]);
+  const nseRows = nseResult.status === 'fulfilled' ? nseResult.value : [];
+  const bseRows = bseResult.status === 'fulfilled' ? bseResult.value : [];
+  lastFetchDiagnostics.nse = nseResult.status === 'fulfilled' ? 'ok' : (nseResult.reason?.response?.status ? `HTTP ${nseResult.reason.response.status}` : nseResult.reason?.message || 'failed');
+  lastFetchDiagnostics.bse = bseResult.status === 'fulfilled' ? 'ok' : (bseResult.reason?.response?.status ? `HTTP ${bseResult.reason.response.status}` : bseResult.reason?.message || 'failed');
+
+  const normalizeKey = value => String(value || '').toUpperCase().replace(/\b(LIMITED|LTD|INDIA|THE)\b/g, '').replace(/[^A-Z0-9]/g, '');
+  const bseByKey = new Map();
+  for (const row of bseRows) {
+    for (const key of [normalizeKey(row.symbol), normalizeKey(row.company)]) if (key) bseByKey.set(key, row);
+  }
+  const merged = nseRows.map(row => {
+    const match = bseByKey.get(normalizeKey(row.symbol)) || bseByKey.get(normalizeKey(row.company));
+    if (!match) return row;
+    return {
+      ...match, ...row,
+      lotSize: row.lotSize || match.lotSize || null,
+      issueSize: row.issueSize || match.issueSize || null,
+      openDate: row.openDate || match.openDate || null,
+      closeDate: row.closeDate || match.closeDate || null,
+      listingDate: row.listingDate || match.listingDate || null,
+      priceRange: {
+        min: row.priceRange?.min || match.priceRange?.min || 0,
+        max: row.priceRange?.max || match.priceRange?.max || row.priceRange?.min || match.priceRange?.min || 0,
+      },
+      registrar: row.registrar || match.registrar || null,
+      source: 'NSE_BSE_MERGED',
+    };
+  });
+  const seen = new Set(merged.map(row => normalizeKey(row.symbol || row.company)));
+  for (const row of bseRows) {
+    const key = normalizeKey(row.symbol || row.company);
+    if (key && !seen.has(key)) { merged.push(row); seen.add(key); }
+  }
+  if (merged.length) {
+    const enriched = await enrichWithIpoGuru(merged);
+    return enriched;
+  }
+
+  // Optional providers are only used when the exchange feeds are unavailable.
+  const optionalSources = [
+    { key: 'ipoguru', fn: fetchLiveFromIpoGuru },
     { key: 'ipoalerts', fn: fetchLiveFromIpoAlerts },
-    { key: 'downstox',  fn: fetchLiveFromDownstox },
+    { key: 'downstox', fn: fetchLiveFromDownstox },
   ];
-  for (const { key, fn } of sources) {
+  for (const { key, fn } of optionalSources) {
     try {
-      let data = await fn();
+      const data = await fn();
       lastFetchDiagnostics[key] = 'ok';
-      if (key === 'nse' || key === 'bse') data = await enrichWithIpoGuru(data);
       return data;
     } catch (err) {
       lastFetchDiagnostics[key] = err.response?.status ? `HTTP ${err.response.status}` : err.message;
