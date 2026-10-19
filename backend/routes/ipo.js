@@ -432,7 +432,7 @@ async function liveToRichShape(live) {
     listingDate: toIsoDate(live.listingDate),
     lotSize: live.lotSize || 'N/A',
     minInvestment: live.lotSize && max ? live.lotSize * max : 'N/A',
-    exchange: live.source === 'BSE_LIVE' ? 'BSE' : 'NSE',
+    exchange: live.source === 'NSE_BSE_MERGED' ? 'NSE / BSE' : (live.source === 'BSE_LIVE' ? 'BSE' : 'NSE'),
     gmp: live.gmp ?? 'N/A', gmpPct: live.gmpPct ?? 'N/A', kostak: live.kostak ?? null, rating: null,
     status: live.status,
     // null (not 0!) when we genuinely don't know — 0 reads as a real price
@@ -450,13 +450,13 @@ async function liveToRichShape(live) {
     peers: [],
     verdict: 'NEUTRAL', verdictColor: '#f59e0b', verdictEmoji: '🤖',
     verdictReason: 'No pre-written verdict for live-fetched IPOs — use "Get Fresh AI Analysis" for a real-time AI verdict.',
-    source: live.source === 'BSE_LIVE' ? 'live_bse' : 'live_nse',
+    source: live.source === 'NSE_BSE_MERGED' ? 'live_nse_bse' : (live.source === 'BSE_LIVE' ? 'live_bse' : 'live_nse'),
   };
 }
 
-const LIVE_SOURCE_TAGS = ['NSE_LIVE', 'BSE_LIVE', 'IPOGURU_LIVE', 'IPOALERTS_LIVE', 'DOWNSTOX_LIVE'];
+const LIVE_SOURCE_TAGS = ['NSE_LIVE', 'BSE_LIVE', 'NSE_BSE_MERGED', 'IPOGURU_LIVE', 'IPOALERTS_LIVE', 'DOWNSTOX_LIVE'];
 const LIVE_SOURCE_LABELS = {
-  NSE_LIVE: 'live_nse', BSE_LIVE: 'live_bse', IPOGURU_LIVE: 'live_ipoguru',
+  NSE_LIVE: 'live_nse', BSE_LIVE: 'live_bse', NSE_BSE_MERGED: 'live_nse_bse', IPOGURU_LIVE: 'live_ipoguru',
   IPOALERTS_LIVE: 'live_ipoalerts', DOWNSTOX_LIVE: 'live_downstox',
 };
 
