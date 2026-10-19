@@ -599,7 +599,7 @@ router.post('/trade', auth, async (req, res) => {
     if (!Number.isSafeInteger(qty) || qty <= 0)
       return res.status(400).json({ message:'Quantity must be a positive integer' });
 
-    const sym = symbol.toUpperCase().replace(/\\.(NS|BO|BSE)$/i, '');
+    const sym = symbol.toUpperCase().replace(/\.(NS|BO|BSE)$/i, '');
 
     // Never trust a price supplied by the browser: it can be modified by
     // the caller. Virtual trades must use a server-fetched market quote.
