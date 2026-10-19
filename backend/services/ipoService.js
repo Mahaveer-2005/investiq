@@ -101,8 +101,8 @@ function normalizeNseIpo(raw, status) {
     normalizeNseIpo._loggedStatuses.add(status);
   }
 
-  const lotSize = Number(raw.marketLot || raw.lotSize || raw.lot_size || 0) || null;
-  const sharesOffered = Number(raw.noOfSharesOffered || raw.issueSize || raw.no_of_shares || 0) || null;
+  const lotSize = Number(raw.marketLot || raw.marketLotSize || raw.lotSize || raw.lot_size || raw.minimumLot || raw.minLotSize || raw.minimumBidLot || raw.bidLot || 0) || null;
+  const sharesOffered = Number(raw.noOfSharesOffered || raw.noOfShares || raw.no_of_shares_offered || raw.no_of_shares || raw.issueSizeShares || raw.issueSize || 0) || null;
   const issueSizeCr = sharesOffered && max ? +(sharesOffered * max / 1e7).toFixed(1) : null;
 
   return {
@@ -114,9 +114,9 @@ function normalizeNseIpo(raw, status) {
     lotSize,
     sharesOffered,
     issueSize: issueSizeCr ? `₹${issueSizeCr} Cr` : (sharesOffered ? `${sharesOffered.toLocaleString('en-IN')} shares` : null),
-    openDate: raw.issueStartDate || raw.startDate || raw.issue_start_date || null,
-    closeDate: raw.issueEndDate || raw.endDate || raw.issue_end_date || null,
-    listingDate: raw.listingDate || raw.dateOfListing || raw.listing_date || null,
+    openDate: raw.issueStartDate || raw.issueOpenDate || raw.openDate || raw.startDate || raw.issue_start_date || raw.biddingStartDate || null,
+    closeDate: raw.issueEndDate || raw.issueCloseDate || raw.closeDate || raw.endDate || raw.issue_end_date || raw.biddingEndDate || null,
+    listingDate: raw.listingDate || raw.dateOfListing || raw.listing_date || raw.listing_date_expected || raw.expectedListingDate || null,
     status,
     registrar: raw.registrar || null, // e.g. "KFin Technologies", "Link Intime (MUFG Intime)"
     source: 'NSE_LIVE',
