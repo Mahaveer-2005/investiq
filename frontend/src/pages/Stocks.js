@@ -248,7 +248,8 @@ export default function Stocks() {
                       background: stock.source?.includes('Yahoo') ? 'rgba(16,185,129,0.1)'
                         : stock.source?.includes('Alpha') ? 'rgba(6,182,212,0.1)' : 'rgba(100,116,139,0.1)'
                     }}>
-                      {stock.source?.includes('Yahoo') ? '🟢 Live'
+                      {Number(stock.price) <= 0 ? 'Unavailable'
+                        : stock.source?.includes('Yahoo') ? '🟢 Live'
                         : stock.source?.includes('Alpha') ? '🔵 Live' : '⚪ Sim'}
                     </span>
                   </td>
