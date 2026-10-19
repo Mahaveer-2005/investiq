@@ -278,6 +278,42 @@ function normalizeGenericIpo(raw, source) {
 // their API keys are configured), and records why each attempt failed.
 let lastFetchDiagnostics = { nse: null, bse: null, ipoguru: null, ipoalerts: null, downstox: null };
 
+async function enrichWithIpoGuru(baseRows) {
+  if (!process.env.IPOGURU_API_KEY) return baseRows;
+  const cacheKey = 'ipoguru_enrichment_v2';
+  let providerRows = ipoCache.get(cacheKey);
+  if (!providerRows) {
+    try {
+      providerRows = await fetchLiveFromIpoGuru();
+      ipoCache.set(cacheKey, providerRows, 6 * 60 * 60);
+      lastFetchDiagnostics.ipoguru = 'ok';
+    } catch (err) {
+      lastFetchDiagnostics.ipoguru = err.response?.status ? `HTTP ${err.response.status}` : err.message;
+      return baseRows;
+    }
+  }
+  const keyOf = value => String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const bySymbol = new Map(providerRows.map(row => [keyOf(row.symbol), row]).filter(([key]) => key));
+  const byName = new Map(providerRows.map(row => [keyOf(row.company), row]).filter(([key]) => key));
+  return baseRows.map(base => {
+    const match = bySymbol.get(keyOf(base.symbol)) || byName.get(keyOf(base.company));
+    if (!match) return base;
+    return {
+      ...base,
+      lotSize: base.lotSize || match.lotSize || null,
+      issueSize: base.issueSize || match.issueSize || null,
+      openDate: base.openDate || match.openDate || null,
+      closeDate: base.closeDate || match.closeDate || null,
+      listingDate: base.listingDate || match.listingDate || null,
+      gmp: match.gmp ?? base.gmp ?? null,
+      gmpPct: match.gmpPct ?? base.gmpPct ?? null,
+      kostak: match.kostak ?? base.kostak ?? null,
+      subscription: match.subscription || base.subscription || null,
+      gmpSource: match.gmp != null ? 'IPO Guru (unofficial grey-market data)' : null,
+    };
+  });
+}
+
 async function fetchLiveIPOs() {
   const sources = [
     { key: 'nse',       fn: fetchLiveFromNSE },
@@ -288,8 +324,9 @@ async function fetchLiveIPOs() {
   ];
   for (const { key, fn } of sources) {
     try {
-      const data = await fn();
+      let data = await fn();
       lastFetchDiagnostics[key] = 'ok';
+      if (key === 'nse' || key === 'bse') data = await enrichWithIpoGuru(data);
       return data;
     } catch (err) {
       lastFetchDiagnostics[key] = err.response?.status ? `HTTP ${err.response.status}` : err.message;
