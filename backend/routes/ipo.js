@@ -345,37 +345,73 @@ const IPO_DATA = [
 ];
 
 // ── Fetch live price ────────────────────────────────────────────────────────
-async function fetchLivePrice(symbol) {
+async function fetchLivePrice(symbol, companyName = '') {
   const cleanSymbol = String(symbol || '').trim().replace(/[^A-Za-z0-9&_-]/g, '');
-  if (!cleanSymbol) return 0;
-  const key = `ipo_live_${cleanSymbol.toUpperCase()}`;
-  const cached = cache.get(key);
+  const cacheKey = `ipo_live_${String(cleanSymbol || companyName).toUpperCase()}`;
+  const cached = cache.get(cacheKey);
   if (cached != null) return cached;
 
-  // Listed securities can be available on NSE or BSE. Try both and cache
-  // only a real quote, so a temporary miss does not suppress later retries.
-  for (const suffix of ['NS', 'BO']) {
+  // First try known ticker formats. Newly listed IPO feeds sometimes provide
+  // a company-name-derived pseudo-symbol rather than the exchange ticker.
+  const candidates = [];
+  if (cleanSymbol) candidates.push(cleanSymbol);
+  for (const ticker of [...new Set(candidates)]) {
+    for (const suffix of ['NS', 'BO']) {
+      try {
+        const res = await axios.get(
+          `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}.${suffix}?interval=1d&range=5d`,
+          { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, timeout: 6000 }
+        );
+        const result = res.data?.chart?.result?.[0];
+        const closes = result?.indicators?.quote?.[0]?.close || [];
+        const lastClose = [...closes].reverse().find(v => Number.isFinite(v) && v > 0);
+        const price = Number(result?.meta?.regularMarketPrice || lastClose || 0);
+        if (price > 0) {
+          cache.set(cacheKey, price, 300);
+          return price;
+        }
+      } catch { /* Try the other exchange ticker or company search. */ }
+    }
+  }
+
+  // Resolve the official Yahoo ticker by company name. This is especially
+  // important for newly listed companies where NSE IPO feeds may not contain
+  // the exact trading symbol or Yahoo's symbol directory may update later.
+  if (companyName) {
     try {
-      const res = await axios.get(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${cleanSymbol}.${suffix}?interval=1d&range=1d`,
-        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, timeout: 6000 }
+      const search = await axios.get('https://query1.finance.yahoo.com/v1/finance/search', {
+        params: { q: companyName, quotesCount: 10, newsCount: 0 },
+        headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+        timeout: 6000,
+      });
+      const quotes = (search.data?.quotes || []).filter(q =>
+        q.symbol && ['EQUITY', 'ETF'].includes(String(q.quoteType || '').toUpperCase()) &&
+        /(^|\.)NS$|\.BO$/i.test(q.symbol)
       );
-      const result = res.data?.chart?.result?.[0];
-      const closes = result?.indicators?.quote?.[0]?.close || [];
-      const lastClose = [...closes].reverse().find(v => Number.isFinite(v) && v > 0);
-      const price = Number(result?.meta?.regularMarketPrice || lastClose || 0);
-      if (price > 0) {
-        cache.set(key, price, 300);
-        return price;
+      for (const quote of quotes) {
+        try {
+          const res = await axios.get(
+            `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(quote.symbol)}?interval=1d&range=5d`,
+            { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, timeout: 6000 }
+          );
+          const result = res.data?.chart?.result?.[0];
+          const closes = result?.indicators?.quote?.[0]?.close || [];
+          const lastClose = [...closes].reverse().find(v => Number.isFinite(v) && v > 0);
+          const price = Number(result?.meta?.regularMarketPrice || lastClose || 0);
+          if (price > 0) {
+            cache.set(cacheKey, price, 300);
+            return price;
+          }
+        } catch { /* Try the next exact ticker match. */ }
       }
-    } catch { /* Try the other exchange ticker. */ }
+    } catch { /* Search provider unavailable; return unknown honestly. */ }
   }
   return 0;
 }
 
 // Enrich a listed IPO with live price & gain calculations
 async function enrichListed(ipo) {
-  const live       = await fetchLivePrice(ipo.symbol);
+  const live       = await fetchLivePrice(ipo.symbol, ipo.company);
   const current    = live || ipo.listedPrice || ipo.issuePrice;
   const gainVsIssue = ipo.issuePrice > 0
     ? +((current - ipo.issuePrice) / ipo.issuePrice * 100).toFixed(1) : 0;
@@ -415,7 +451,7 @@ async function liveToRichShape(live) {
     try {
       // Use the IPO route's Yahoo Finance lookup; do not call the unrelated
       // routes/stocks module (it does not export getLivePrice).
-      const quote = await fetchLivePrice(live.symbol);
+      const quote = await fetchLivePrice(live.symbol, live.company);
       currentPrice = Number(quote) > 0 ? Number(quote) : null;
     } catch { /* Current price remains unknown rather than fabricated. */ }
   }
