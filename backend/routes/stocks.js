@@ -595,17 +595,18 @@ router.post('/trade', auth, async (req, res) => {
     if (!action || !['buy','sell'].includes(action.toLowerCase()))
       return res.status(400).json({ message:'Action must be buy or sell' });
 
-    const qty = parseInt(quantity);
-    if (!qty || qty <= 0)
+    const qty = Number(quantity);
+    if (!Number.isSafeInteger(qty) || qty <= 0)
       return res.status(400).json({ message:'Quantity must be a positive integer' });
 
-    const sym = symbol.toUpperCase().replace('.NS','').replace('.BSE','');
+    const sym = symbol.toUpperCase().replace(/\\.(NS|BO|BSE)$/i, '');
 
-    // Get live price — must be real, fallback to client price
-    const live       = await getLivePrice(sym);
-    const tradePrice = live.price || Number(clientPrice) || 0;
-    if (!tradePrice || tradePrice <= 0)
-      return res.status(400).json({ message:`Could not get valid price for ${sym}` });
+    // Never trust a price supplied by the browser: it can be modified by
+    // the caller. Virtual trades must use a server-fetched market quote.
+    const live = await getLivePrice(sym);
+    const tradePrice = Number(live?.price || 0);
+    if (!Number.isFinite(tradePrice) || tradePrice <= 0)
+      return res.status(503).json({ message:`A verified market price is unavailable for ${sym}. Please retry later; no trade was placed.` });
 
     const totalCost = +(tradePrice * qty).toFixed(2);
 
