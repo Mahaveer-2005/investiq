@@ -201,12 +201,12 @@ export default function IPO() {
                 {/* Key metrics grid */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
                   {[
-                    { label: ipo.status === 'listed' ? 'Current Price' : 'Price Band', value: ipo.priceRange },
-                    { label: 'Issue Size',   value: ipo.issueSize || 'N/A' },
-                    { label: 'Lot Size',     value: ipo.lotSize && ipo.lotSize !== 'N/A' ? `${ipo.lotSize} shares` : 'N/A' },
-                    { label: 'Min Invest',   value: (typeof ipo.minInvestment === 'number') ? `₹${ipo.minInvestment.toLocaleString('en-IN')}` : (ipo.issuePrice && ipo.lotSize && ipo.lotSize !== 'N/A' ? `₹${(ipo.issuePrice*ipo.lotSize).toLocaleString('en-IN')}` : 'N/A') },
-                    { label: 'GMP',          value: ipo.gmp || 'N/A' },
-                    { label: 'GMP %',        value: ipo.gmpPct || 'N/A' },
+                    { label: ipo.status === 'listed' ? 'Current Price' : 'Price Band', value: ipo.priceRange || 'Not published' },
+                    { label: 'Issue Size', value: ipo.issueSize && ipo.issueSize !== 'N/A (listed)' ? ipo.issueSize : (ipo.status === 'listed' ? 'Not in exchange feed' : 'Not published') },
+                    { label: 'Lot Size', value: ipo.lotSize && ipo.lotSize !== 'N/A' ? `${ipo.lotSize} shares` : (ipo.status === 'listed' ? 'Historical data unavailable' : 'Not published') },
+                    { label: 'Min Invest', value: (typeof ipo.minInvestment === 'number' && ipo.minInvestment > 0) ? `₹${ipo.minInvestment.toLocaleString('en-IN')}` : (ipo.issuePrice > 0 && ipo.lotSize && ipo.lotSize !== 'N/A' ? `₹${(ipo.issuePrice*ipo.lotSize).toLocaleString('en-IN')}` : (ipo.status === 'listed' ? 'Not applicable now' : 'Needs lot size')) },
+                    { label: 'GMP', value: ipo.gmp && ipo.gmp !== 'N/A' ? ipo.gmp : 'No verified data' },
+                    { label: 'GMP %', value: ipo.gmpPct && ipo.gmpPct !== 'N/A' ? ipo.gmpPct : 'No verified data' },
                   ].map((f, i) => (
                     <div key={i} style={{ background: 'rgba(10,14,26,0.6)', borderRadius: 8, padding: '8px 10px' }}>
                       <div style={{ color: '#475569', fontSize: 9, fontWeight: 700, marginBottom: 3, textTransform: 'uppercase' }}>{f.label}</div>
