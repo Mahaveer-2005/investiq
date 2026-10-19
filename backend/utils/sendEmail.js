@@ -41,6 +41,12 @@ function getSmtpTransporter() {
 }
 
 function activeProvider() {
+  // Explicit selection lets a free Gmail App Password setup work even when
+  // an old RESEND_API_KEY remains configured in the hosting dashboard.
+  const selected = (process.env.EMAIL_PROVIDER || '').trim().toLowerCase();
+  if (selected === 'smtp' && process.env.EMAIL_USER && process.env.EMAIL_PASS) return 'smtp';
+  if (selected === 'resend' && RESEND_API_KEY) return 'resend';
+  if (selected === 'smtp' || selected === 'resend') return 'console';
   if (RESEND_API_KEY) return 'resend';
   if (process.env.EMAIL_USER && process.env.EMAIL_PASS) return 'smtp';
   return 'console';
@@ -125,7 +131,7 @@ async function verifyEmailConfig() {
   const provider = activeProvider();
 
   if (provider === 'console') {
-    console.log('ℹ️  No email provider configured (RESEND_API_KEY or EMAIL_USER/EMAIL_PASS) — OTPs will be logged to this console instead of emailed.');
+    console.log('ℹ️  No usable email provider configured (check EMAIL_PROVIDER, RESEND_API_KEY, or EMAIL_USER/EMAIL_PASS) — email delivery is unavailable.');
     console.log('   → Add RESEND_API_KEY to backend/.env for real delivery to any user\'s inbox. See REAL_MODE_SETUP.md.');
     return false;
   }
