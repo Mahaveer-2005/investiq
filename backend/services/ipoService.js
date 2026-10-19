@@ -197,13 +197,14 @@ async function fetchLiveFromNSE() {
 // 1) IPO Guru — https://www.ipoguru.in (needs IPOGURU_API_KEY per the docs shared)
 async function fetchLiveFromIpoGuru() {
   if (!process.env.IPOGURU_API_KEY) throw new Error('IPOGURU_API_KEY not configured');
-  const res = await axios.get('https://www.ipoguru.in/api/v1/ipos', {
-    params: { type: 'mainboard', status: 'open' },
+  // API v1 was retired on 30 Sep 2026; v2 returns current GMP inside each IPO row.
+  const res = await axios.get('https://www.ipoguru.in/api/v2/ipos', {
+    params: { months: 6, limit: 100 },
     headers: { 'X-API-KEY': process.env.IPOGURU_API_KEY },
-    timeout: 8000, insecureHTTPParser: true,
+    timeout: 10000, insecureHTTPParser: true,
   });
   const rows = Array.isArray(res.data) ? res.data : res.data?.data || res.data?.ipos || [];
-  if (!rows.length) throw new Error('IPO Guru returned no rows');
+  if (!rows.length) throw new Error(res.data?.message || 'IPO Guru v2 returned no rows');
   return rows.map(r => normalizeGenericIpo(r, 'IPOGURU_LIVE'));
 }
 
@@ -233,22 +234,41 @@ async function fetchLiveFromDownstox() {
 // Generic normalizer that tries several common field-name variants, since
 // the exact schema of these three sources is unverified.
 function normalizeGenericIpo(raw, source) {
-  const company = raw.companyName || raw.company || raw.name || 'Unknown';
-  const symbol  = (raw.symbol || company).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
-  const min = Number(raw.priceRangeMin || raw.minPrice || raw.issuePriceLow  || raw.price_min || 0);
-  const max = Number(raw.priceRangeMax || raw.maxPrice || raw.issuePriceHigh || raw.price_max || min);
+  const company = raw.companyName || raw.company || raw.name || raw.short_name || 'Unknown';
+  const symbol = (raw.symbol || raw.nse_symbol || raw.slug || company).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 12);
+  const band = String(raw.price_band || raw.priceRange || '');
+  const bandNums = band.match(/\d+(?:\.\d+)?/g)?.map(Number) || [];
+  const min = Number(raw.priceRangeMin || raw.minPrice || raw.issuePriceLow || raw.price_min || raw.minimum_price || bandNums[0] || 0);
+  const max = Number(raw.priceRangeMax || raw.maxPrice || raw.issuePriceHigh || raw.price_max || raw.maximum_price || bandNums[1] || bandNums[0] || min);
+  const gmpBlock = raw.gmp && typeof raw.gmp === 'object' ? raw.gmp : {};
+  const gmpValue = gmpBlock.price ?? (typeof raw.gmp === 'object' ? null : raw.gmp) ?? raw.gmp_price ?? null;
+  const gmpPct = gmpBlock.percentage ?? raw.gmpPct ?? raw.gmp_percent ?? null;
+  const timeline = raw.timeline || {};
+  const subscription = raw.subscription || {};
+  const statusRaw = String(raw.status || 'upcoming').toLowerCase();
+  const status = statusRaw === 'open' ? 'active' : (statusRaw === 'closed' ? 'upcoming' : (statusRaw === 'listed' ? 'listed' : statusRaw));
+  const lotSize = Number(raw.lotSize || raw.lot_size || raw.minimum_quantity || raw.marketLot || 0) || null;
   return {
     id: `ipo_${source.toLowerCase()}_${symbol || Math.random().toString(36).slice(2, 8)}`,
-    company, symbol,
-    sector: raw.sector || raw.industry || 'General',
+    company, symbol, slug: raw.slug || null,
+    sector: raw.sector || raw.industry || raw.type || 'General',
     priceRange: { min, max },
-    lotSize: Number(raw.lotSize || raw.lot_size || 0) || null,
-    issueSize: raw.issueSize || raw.issue_size || null,
-    openDate: raw.openDate || raw.startDate || raw.open_date || null,
-    closeDate: raw.closeDate || raw.endDate || raw.close_date || null,
-    listingDate: raw.listingDate || raw.listing_date || null,
-    status: raw.status || 'upcoming',
-    gmp: raw.gmp ?? null,
+    lotSize,
+    issueSize: raw.issueSize || raw.issue_size || (raw.issue_size_crore ? `₹${raw.issue_size_crore} Cr` : raw.issue_size_cr ? `₹${raw.issue_size_cr} Cr` : null),
+    openDate: raw.openDate || raw.startDate || raw.open_date || raw.bidding_start_date || timeline.open_date || null,
+    closeDate: raw.closeDate || raw.endDate || raw.close_date || raw.bidding_end_date || timeline.close_date || null,
+    listingDate: raw.listingDate || raw.listing_date || timeline.listing_date || null,
+    status,
+    gmp: gmpValue,
+    gmpPct,
+    kostak: gmpBlock.kostak ?? raw.kostak ?? null,
+    subscription: {
+      retail: subscription.retail ?? raw.subscription_retail ?? '–',
+      qib: subscription.qib ?? raw.subscription_qib ?? '–',
+      nii: subscription.nii ?? raw.subscription_nii ?? '–',
+      total: subscription.total ?? raw.subscription_total ?? '–',
+      status: 'Provider data',
+    },
     registrar: raw.registrar || null,
     source,
   };
