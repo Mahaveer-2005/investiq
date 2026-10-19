@@ -165,12 +165,12 @@ async function fetchBharatStock(symbol) {
     const [stockRes, ratiosRes, financialRes] = await Promise.all([
       axios.get(`https://bharatstockapi.com/v1/stocks/${encodeURIComponent(ticker)}`, { headers, timeout: 12000 }),
       axios.get(`https://bharatstockapi.com/v1/stocks/${encodeURIComponent(ticker)}/ratios`, { headers, timeout: 12000 }),
-      axios.get(`https://bharatstockapi.com/v1/stocks/${encodeURIComponent(ticker)}/financials?period_type=annual&page=1&page_size=1`, { headers, timeout: 12000 }),
+      axios.get(`https://bharatstockapi.com/v1/stocks/${encodeURIComponent(ticker)}/financials?period_type=annual&page=1&page_size=2`, { headers, timeout: 12000 }),
     ]);
     const stock = stockRes.data?.data || stockRes.data || {};
     const ratios = ratiosRes.data?.data || ratiosRes.data || {};
     const rows = financialRes.data?.data || financialRes.data?.results || (Array.isArray(financialRes.data) ? financialRes.data : []);
-    return { stock, ratios, financial: rows[0] || {} };
+    return { stock, ratios, financial: rows[0] || {}, previousFinancial: rows[1] || null };
   } catch (e) {
     console.error('BharatStock fundamentals fetch failed:', e.response?.status || '', e.message);
     return null;
@@ -339,6 +339,7 @@ async function fetchFundamentals(symbol) {
     const m = bharat.ratios || {};
     const s = bharat.stock || {};
     const f = bharat.financial || {};
+    const pf = bharat.previousFinancial || {};
     const pick = (...values) => values.find(v => v !== undefined && v !== null && v !== '') ;
     const numberOr = (value, fallback) => {
       const n = Number(value);
@@ -351,6 +352,8 @@ async function fetchFundamentals(symbol) {
     result.pe = numberOr(pick(m.pe_ratio), result.pe);
     result.pb = numberOr(pick(m.pb_ratio), result.pb);
     result.eps = numberOr(pick(f.eps, m.eps), result.eps);
+    // Prefer the documented per-share metric; otherwise derive book value from price / P/B.
+    result.bookValue = numberOr(pick(m.book_value_per_share), Number(m.pb_ratio) > 0 && Number(result.price) > 0 ? Number(result.price) / Number(m.pb_ratio) : result.bookValue);
     result.revenue = numberOr(pick(f.revenue, m.revenue_ttm), result.revenue);
     result.netIncome = numberOr(pick(f.net_profit, m.net_profit_ttm), result.netIncome);
     // Absolute EBITDA must come from an absolute-value field; never treat an EBITDA margin (%) as currency.
@@ -371,7 +374,13 @@ async function fetchFundamentals(symbol) {
     result.pegRatio = numberOr(pick(m.peg_ratio), result.pegRatio);
     result.cr = numberOr(pick(m.current_ratio), result.cr);
     result.revenueGrowth = numberOr(pick(m.revenue_growth_yoy), result.revenueGrowth);
-    result.earningsGrowth = numberOr(pick(m.profit_growth_yoy), result.earningsGrowth);
+    result.earningsGrowth = numberOr(pick(m.profit_growth_yoy, m.eps_growth_yoy), result.earningsGrowth);
+    // Annual filings are returned newest-first; calculate growth only when both years contain valid values.
+    const growthPct = (current, previous) => Number(current) > 0 && Number(previous) > 0 ? +(((Number(current) - Number(previous)) / Number(previous)) * 100).toFixed(2) : null;
+    const annualRevenueGrowth = growthPct(f.revenue, pf.revenue);
+    const annualProfitGrowth = growthPct(f.net_profit, pf.net_profit);
+    if (annualRevenueGrowth !== null) result.revenueGrowth = annualRevenueGrowth;
+    if (annualProfitGrowth !== null) result.earningsGrowth = annualProfitGrowth;
     result.operatingCF = numberOr(pick(f.cash_flow_operating), result.operatingCF);
     if (f.cash_flow_operating != null && f.capex != null) {
       result.fcf = numberOr(f.cash_flow_operating, 0) - numberOr(f.capex, 0);
