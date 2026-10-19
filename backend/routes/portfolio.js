@@ -6,28 +6,41 @@ const NodeCache = require('node-cache');
 const cache  = new NodeCache({ stdTTL: 120 });
 
 async function getLivePrice(symbol) {
-  const key = `lp_${symbol}`;
+  const normalized = String(symbol || '').trim().toUpperCase();
+  const key = `lp_${normalized}`;
   const hit = cache.get(key);
   if (hit) return hit;
-  try {
-    const sym = symbol.includes('.') ? symbol : `${symbol}.NS`;
-    const { data } = await axios.get(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${sym}?interval=1d&range=1d`,
-      { headers:{ 'User-Agent':'Mozilla/5.0' }, timeout:8000 }
-    );
-    const meta  = data?.chart?.result?.[0]?.meta;
-    const price = meta?.regularMarketPrice;
-    const prev  = meta?.chartPreviousClose || price;
-    if (!price) return null;
-    const result = {
-      price:     +price.toFixed(2),
-      change:    prev ? +(price - prev).toFixed(2) : 0,
-      changePct: prev ? +((price - prev) / prev * 100).toFixed(2) : 0,
-      name:      meta?.longName || meta?.shortName || symbol,
-    };
-    cache.set(key, result);
-    return result;
-  } catch { return null; }
+
+  const candidates = normalized.includes('.')
+    ? [normalized]
+    : [`${normalized}.NS`, `${normalized}.BO`];
+  for (const sym of candidates) {
+    try {
+      const { data } = await axios.get(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym)}?interval=1d&range=5d`,
+        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, timeout: 8000 }
+      );
+      const result = data?.chart?.result?.[0];
+      const meta = result?.meta;
+      const closes = result?.indicators?.quote?.[0]?.close || [];
+      const lastClose = [...closes].reverse().find(v => Number.isFinite(v) && v > 0);
+      const price = Number(meta?.regularMarketPrice || lastClose || 0);
+      if (price > 0) {
+        const prev = Number(meta?.chartPreviousClose || meta?.previousClose || price);
+        const change = prev > 0 ? +(price - prev).toFixed(2) : 0;
+        const resultPrice = {
+          price: +price.toFixed(2),
+          change,
+          changePct: prev > 0 ? +((change / prev) * 100).toFixed(2) : 0,
+          name: meta?.longName || meta?.shortName || normalized,
+          exchangeSymbol: sym,
+        };
+        cache.set(key, resultPrice, 120);
+        return resultPrice;
+      }
+    } catch { /* Try the other exchange symbol. */ }
+  }
+  return null;
 }
 
 // ── GET /api/portfolio ────────────────────────────────────────────────────
