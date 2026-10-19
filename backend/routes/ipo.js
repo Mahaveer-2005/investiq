@@ -432,8 +432,8 @@ async function liveToRichShape(live) {
     listingDate: toIsoDate(live.listingDate),
     lotSize: live.lotSize || 'N/A',
     minInvestment: live.lotSize && max ? live.lotSize * max : 'N/A',
-    exchange: 'NSE',
-    gmp: 'N/A', gmpPct: 'N/A', rating: null,
+    exchange: live.source === 'BSE_LIVE' ? 'BSE' : 'NSE',
+    gmp: live.gmp ?? 'N/A', gmpPct: live.gmpPct ?? 'N/A', kostak: live.kostak ?? null, rating: null,
     status: live.status,
     // null (not 0!) when we genuinely don't know — 0 reads as a real price
     // and produces a misleading "+0%" in the UI. currentPrice is the one
@@ -445,7 +445,7 @@ async function liveToRichShape(live) {
       ? `${live.company} is now listed and trading on NSE. Pre-listing issue details from NSE's public feed weren't reliably available for this entry — the price shown above is the real, live current market price.`
       : `Live IPO data sourced from NSE India${live.registrar ? ` (registrar: ${live.registrar})` : ''}. Tap "Get Fresh AI Analysis" below for a generated buy/avoid verdict.`,
     highlights: [], risks: [],
-    subscription: { retail: '–', qib: '–', nii: '–', total: '–', status: 'Live from NSE' },
+    subscription: live.subscription || { retail: '–', qib: '–', nii: '–', total: '–', status: 'Live from source' },
     financials: { revenue: 'N/A', profit: 'N/A', pe: 'N/A', roe: 'N/A', debtEquity: 'N/A', ebitda: 'N/A' },
     peers: [],
     verdict: 'NEUTRAL', verdictColor: '#f59e0b', verdictEmoji: '🤖',
