@@ -77,7 +77,7 @@ function normalizeNseIpo(raw, status) {
   // — parse the actual numbers out, requiring a match to START with a digit
   // (NOT [\d.]+, which was the bug: that greedily grabbed the period right
   // after "Rs." as part of the number, turning "408" into "0.408").
-  const priceRaw = String(raw.issuePrice || raw.issuePriceRange || raw.priceRange || raw.price_range || raw.finalIssuePrice || raw.offerPrice || '');
+  const priceRaw = String([raw.issuePrice, raw.issuePriceRange, raw.priceRange, raw.price_range, raw.finalIssuePrice, raw.offerPrice].find(v => v !== undefined && v !== null && v !== '' && !['-', 'N/A', 'NA'].includes(String(v).trim())) || '');
   const priceNums = priceRaw.match(/\d+(?:\.\d+)?/g)?.map(Number) || [];
   let min = priceNums[0] || Number(raw.issuePriceLow || raw.minPrice || 0);
   let max = priceNums[1] || priceNums[0] || Number(raw.issuePriceHigh || raw.maxPrice || min);
