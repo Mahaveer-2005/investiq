@@ -158,7 +158,7 @@ export default function Stocks() {
       <div style={{
         background: 'rgba(26,31,53,0.8)',
         border: '1px solid rgba(99,102,241,0.15)',
-        borderRadius: 16, overflow: 'hidden'
+        borderRadius: 16, overflowX: 'auto', overflowY: 'hidden'
       }}>
         {loading ? (
           <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>
