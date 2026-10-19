@@ -371,15 +371,15 @@ export default function IPO() {
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 16 }}>
                   {[
                     { label: selected.status === 'listed' ? 'Current Price' : 'Price Band', value: selected.priceRange },
-                    { label: 'Issue Size',       value: selected.issueSize || 'N/A' },
-                    { label: 'Lot Size',         value: selected.lotSize && selected.lotSize !== 'N/A' ? `${selected.lotSize} shares` : 'N/A' },
-                    { label: 'Min Investment',   value: `₹${(selected.minInvestment || 0).toLocaleString('en-IN')}` },
+                    { label: 'Issue Size', value: selected.issueSize && selected.issueSize !== 'N/A (listed)' ? selected.issueSize : (selected.status === 'listed' ? 'Historical issue size unavailable' : 'Not published by source') },
+                    { label: 'Lot Size', value: selected.lotSize && selected.lotSize !== 'N/A' ? `${selected.lotSize} shares` : (selected.status === 'listed' ? 'Historical lot size unavailable' : 'Not published by source') },
+                    { label: 'Min Investment', value: (Number(selected.minInvestment) > 0) ? `₹${Number(selected.minInvestment).toLocaleString('en-IN')}` : (Number(selected.issuePrice) > 0 && Number(selected.lotSize) > 0 ? `₹${(Number(selected.issuePrice) * Number(selected.lotSize)).toLocaleString('en-IN')}` : 'Cannot calculate without issue price and lot size') },
                     { label: 'Open Date',        value: fmtDate(selected.openDate) },
                     { label: 'Close Date',       value: fmtDate(selected.closeDate) },
                     { label: 'Listing Date',     value: fmtDate(selected.listingDate) },
                     { label: 'Exchange',         value: selected.exchange },
-                    { label: 'GMP (Grey Market)',value: `${selected.gmp} (${selected.gmpPct})` },
-                    { label: 'Estimated Kostak', value: selected.gmp ? `~${selected.gmp} per application` : 'N/A' },
+                    { label: 'GMP (Grey Market)',value: selected.gmp && selected.gmp !== 'N/A' ? `${selected.gmp} (${selected.gmpPct || 'percentage unavailable'})` : 'No verified GMP quote' },
+                    { label: 'Estimated Kostak', value: selected.kostak ? selected.kostak : 'No verified Kostak quote' },
                   ].map((f, i) => (
                     <div key={i} style={{ background: 'rgba(10,14,26,0.6)', borderRadius: 8, padding: '10px 12px' }}>
                       <div style={{ color: '#475569', fontSize: 10, fontWeight: 700, marginBottom: 3, textTransform: 'uppercase' }}>{f.label}</div>
