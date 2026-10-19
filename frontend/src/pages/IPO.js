@@ -119,7 +119,7 @@ export default function IPO() {
                 title={dataSource.diagnostics ? `NSE: ${dataSource.diagnostics.nse} | BSE: ${dataSource.diagnostics.bse}` : ''}
               >
                 {dataSource.liveSourceReachable
-                  ? `🟢 Live ${dataSource.activeSource === 'NSE_LIVE' ? 'NSE' : 'BSE'} feed`
+                  ? `🟢 Live ${dataSource.activeSource === 'NSE_BSE_MERGED' ? 'NSE/BSE' : (dataSource.activeSource === 'NSE_LIVE' ? 'NSE' : 'BSE')} feed`
                   : `🟡 Curated dataset — NSE: ${dataSource.diagnostics?.nse || '?'}, BSE: ${dataSource.diagnostics?.bse || '?'}`}
               </div>
             )}
