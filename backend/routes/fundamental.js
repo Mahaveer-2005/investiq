@@ -353,7 +353,10 @@ async function fetchFundamentals(symbol) {
     result.eps = numberOr(pick(f.eps, m.eps), result.eps);
     result.revenue = numberOr(pick(f.revenue, m.revenue_ttm), result.revenue);
     result.netIncome = numberOr(pick(f.net_profit, m.net_profit_ttm), result.netIncome);
-    result.ebitda = numberOr(pick(m.ebitda, m.ebitda_margin), result.ebitda);
+    // Absolute EBITDA must come from an absolute-value field; never treat an EBITDA margin (%) as currency.
+    result.ebitda = numberOr(pick(m.ebitda, f.ebitda), result.ebitda);
+    result.totalDebt = numberOr(pick(m.total_debt, f.total_debt), result.totalDebt);
+    result.totalEquity = numberOr(pick(f.total_equity, f.total_stockholders_equity, f.total_stockholder_equity), result.totalEquity);
     result.roe = numberOr(pick(m.roe), result.roe);
     result.opm = numberOr(pick(m.operating_margin), result.opm);
     result.npm = numberOr(pick(m.net_margin), result.npm);
