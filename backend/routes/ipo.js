@@ -346,18 +346,31 @@ const IPO_DATA = [
 
 // ── Fetch live price ────────────────────────────────────────────────────────
 async function fetchLivePrice(symbol) {
-  const key = `ipo_live_${symbol}`;
-  const c   = cache.get(key);
-  if (c != null) return c;
-  try {
-    const res   = await axios.get(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}.NS?interval=1d&range=1d`,
-      { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, timeout: 6000 }
-    );
-    const price = res.data?.chart?.result?.[0]?.meta?.regularMarketPrice || 0;
-    cache.set(key, price, 300);
-    return price;
-  } catch { return 0; }
+  const cleanSymbol = String(symbol || '').trim().replace(/[^A-Za-z0-9&_-]/g, '');
+  if (!cleanSymbol) return 0;
+  const key = `ipo_live_${cleanSymbol.toUpperCase()}`;
+  const cached = cache.get(key);
+  if (cached != null) return cached;
+
+  // Listed securities can be available on NSE or BSE. Try both and cache
+  // only a real quote, so a temporary miss does not suppress later retries.
+  for (const suffix of ['NS', 'BO']) {
+    try {
+      const res = await axios.get(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${cleanSymbol}.${suffix}?interval=1d&range=1d`,
+        { headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' }, timeout: 6000 }
+      );
+      const result = res.data?.chart?.result?.[0];
+      const closes = result?.indicators?.quote?.[0]?.close || [];
+      const lastClose = [...closes].reverse().find(v => Number.isFinite(v) && v > 0);
+      const price = Number(result?.meta?.regularMarketPrice || lastClose || 0);
+      if (price > 0) {
+        cache.set(key, price, 300);
+        return price;
+      }
+    } catch { /* Try the other exchange ticker. */ }
+  }
+  return 0;
 }
 
 // Enrich a listed IPO with live price & gain calculations
