@@ -327,13 +327,68 @@ async function enrichWithIpoGuru(baseRows) {
   });
 }
 
+// Public supplemental IPO feed. NSE/BSE are authoritative for issue dates and
+// terms, but their listing feeds often omit historical lot size and unofficial
+// GMP. This source is used only to fill missing fields, never to overwrite
+// values already supplied by the exchanges.
+async function fetchXflotIPOs() {
+  const res = await axios.get('https://www.xflot.com/api/public/market/ipos?limit=200', {
+    headers: { 'User-Agent': HEADERS['User-Agent'], Accept: 'application/json' },
+    timeout: 10000,
+  });
+  const rows = Array.isArray(res.data?.ipos) ? res.data.ipos : [];
+  if (!res.data?.ok || !rows.length) throw new Error('Supplemental IPO feed returned no rows');
+  return rows.map(raw => {
+    const statusRaw = String(raw.status || '').toUpperCase();
+    const status = statusRaw === 'OPEN' ? 'active'
+      : statusRaw === 'UPCOMING' ? 'upcoming'
+      : ['CLOSED', 'LISTED'].includes(statusRaw) ? 'listed' : 'upcoming';
+    const max = Number(raw.priceMax || 0);
+    const min = Number(raw.priceMin || 0);
+    const lotSize = Number(raw.lotSize || 0) || null;
+    const issueSize = Number(raw.issueSizeCr || 0) > 0 ? `₹${Number(raw.issueSizeCr).toLocaleString('en-IN')} Cr` : null;
+    const gmp = raw.lastGmp === null || raw.lastGmp === undefined ? null : Number(raw.lastGmp);
+    const gmpPct = raw.lastGmpPct === null || raw.lastGmpPct === undefined ? null : Number(raw.lastGmpPct);
+    const total = raw.lastSubX === null || raw.lastSubX === undefined ? null : Number(raw.lastSubX);
+    return {
+      id: `ipo_xflot_${String(raw.slug || raw.name || Math.random()).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 20)}`,
+      company: raw.name || 'Unknown',
+      symbol: raw.symbol || raw.slug || raw.name || '',
+      sector: raw.board === 'SME' ? 'SME' : 'General',
+      priceRange: { min, max },
+      lotSize,
+      issueSize,
+      openDate: raw.openDate || null,
+      closeDate: raw.closeDate || null,
+      listingDate: raw.listingDate || null,
+      status,
+      gmp: gmp === null || !Number.isFinite(gmp) ? null : (gmp >= 0 ? `+₹${gmp}` : `-₹${Math.abs(gmp)}`),
+      gmpPct: gmpPct === null || !Number.isFinite(gmpPct) ? null : `${gmpPct >= 0 ? '+' : ''}${gmpPct}%`,
+      subscription: {
+        retail: '–', qib: '–', nii: '–',
+        total: total === null || !Number.isFinite(total) ? '–' : `${total}x`,
+        status: raw.status || 'Supplemental public data',
+      },
+      gmpSources: raw.gmpSources ?? null,
+      gmpDisputed: raw.gmpDisputed ?? null,
+      source: 'XFLOT_LIVE',
+    };
+  });
+}
+
 async function fetchLiveIPOs() {
   // NSE often returns rows with incomplete fields while BSE has complementary
   // dates, lot sizes or issue sizes. Query both feeds and merge them instead
   // of stopping at the first non-empty response.
-  const [nseResult, bseResult] = await Promise.allSettled([fetchLiveFromNSE(), fetchLiveFromBSE()]);
+  const [nseResult, bseResult, supplementalResult] = await Promise.allSettled([
+    fetchLiveFromNSE(), fetchLiveFromBSE(), fetchXflotIPOs(),
+  ]);
   const nseRows = nseResult.status === 'fulfilled' ? nseResult.value : [];
   const bseRows = bseResult.status === 'fulfilled' ? bseResult.value : [];
+  const supplementalRows = supplementalResult.status === 'fulfilled' ? supplementalResult.value : [];
+  lastFetchDiagnostics.xflot = supplementalResult.status === 'fulfilled'
+    ? 'ok'
+    : (supplementalResult.reason?.response?.status ? `HTTP ${supplementalResult.reason.response.status}` : supplementalResult.reason?.message || 'failed');
   lastFetchDiagnostics.nse = nseResult.status === 'fulfilled' ? 'ok' : (nseResult.reason?.response?.status ? `HTTP ${nseResult.reason.response.status}` : nseResult.reason?.message || 'failed');
   lastFetchDiagnostics.bse = bseResult.status === 'fulfilled' ? 'ok' : (bseResult.reason?.response?.status ? `HTTP ${bseResult.reason.response.status}` : bseResult.reason?.message || 'failed');
 
@@ -365,8 +420,56 @@ async function fetchLiveIPOs() {
     const key = normalizeKey(row.symbol || row.company);
     if (key && !seen.has(key)) { merged.push(row); seen.add(key); }
   }
-  if (merged.length) {
-    const enriched = await enrichWithIpoGuru(merged);
+  // Fill only missing exchange fields from the supplemental feed. Name and
+  // symbol matching strips common legal suffixes to match listed records.
+  const supplementalKey = value => normalizeKey(value)
+    .replace(/(LIMITED|LTD|INDIA|THE|COMPANY|CO)$/g, '');
+  const supplementalByKey = new Map();
+  for (const row of supplementalRows) {
+    for (const key of [supplementalKey(row.symbol), supplementalKey(row.company)]) {
+      if (key) supplementalByKey.set(key, row);
+    }
+  }
+  const exchangeRows = merged.map(row => {
+    const match = supplementalByKey.get(supplementalKey(row.symbol))
+      || supplementalByKey.get(supplementalKey(row.company));
+    if (!match) return row;
+    const priceRange = {
+      min: row.priceRange?.min || match.priceRange?.min || 0,
+      max: row.priceRange?.max || match.priceRange?.max || row.priceRange?.min || match.priceRange?.min || 0,
+    };
+    return {
+      ...row,
+      priceRange,
+      lotSize: row.lotSize || match.lotSize || null,
+      issueSize: row.issueSize || match.issueSize || null,
+      openDate: row.openDate || match.openDate || null,
+      closeDate: row.closeDate || match.closeDate || null,
+      listingDate: row.listingDate || match.listingDate || null,
+      gmp: row.gmp ?? match.gmp ?? null,
+      gmpPct: row.gmpPct ?? match.gmpPct ?? null,
+      subscription: row.subscription?.total && row.subscription.total !== '–'
+        ? row.subscription
+        : (match.subscription || row.subscription || null),
+      gmpSources: match.gmpSources ?? null,
+      gmpDisputed: match.gmpDisputed ?? null,
+      supplementalSource: 'Xflot public IPO feed',
+    };
+  });
+  // Add supplemental IPOs missing from exchange feeds, without duplicating
+  // records already matched by symbol/company.
+  const existingKeys = new Set(exchangeRows.flatMap(row => [
+    supplementalKey(row.symbol), supplementalKey(row.company),
+  ]).filter(Boolean));
+  for (const row of supplementalRows) {
+    const keys = [supplementalKey(row.symbol), supplementalKey(row.company)].filter(Boolean);
+    if (keys.some(key => existingKeys.has(key))) continue;
+    exchangeRows.push(row);
+    keys.forEach(key => existingKeys.add(key));
+  }
+
+  if (exchangeRows.length) {
+    const enriched = await enrichWithIpoGuru(exchangeRows);
     return enriched;
   }
 
