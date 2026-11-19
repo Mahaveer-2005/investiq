@@ -584,8 +584,7 @@ router.get('/all', auth, async (req, res) => {
 router.get('/:id', auth, async (req, res) => {
   try {
     const { list } = await getMergedIPOList();
-    const ipo = list.find(i => i.id === req.params.id || i.symbol === req.params.id.toUpperCase())
-             ;
+    const ipo = list.find(i => i.id === req.params.id || i.symbol === req.params.id.toUpperCase());
     if (!ipo) return res.status(404).json({ message: 'IPO not found' });
     if (ipo.status === 'listed' && ipo.source === 'curated') return res.json(await enrichListed(ipo));
     res.json(ipo);
@@ -659,8 +658,7 @@ router.get('/:id/analysis', auth, async (req, res) => {
     // now it searches the same merged list the main endpoints use, matching
     // by symbol first since that's stable across cache refreshes even if the
     // generated id changes slightly.
-    const ipo = list.find(i => i.symbol === req.params.id.toUpperCase() || i.id === req.params.id)
-             ;
+    const ipo = list.find(i => i.symbol === req.params.id.toUpperCase() || i.id === req.params.id);
     if (!ipo) return res.status(404).json({ message: 'IPO not found' });
     const analysis = await getAIIPOAnalysis(ipo);
     res.json(analysis);
