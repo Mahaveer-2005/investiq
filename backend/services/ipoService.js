@@ -289,7 +289,7 @@ function normalizeGenericIpo(raw, source) {
 
 // Tries NSE first, then BSE, then the three user-suggested sources (only if
 // their API keys are configured), and records why each attempt failed.
-let lastFetchDiagnostics = { nse: null, bse: null, ipoguru: null, ipoalerts: null, downstox: null };
+let lastFetchDiagnostics = { nse: null, bse: null, xflot: null, ipoguru: null, ipoalerts: null, downstox: null };
 
 async function enrichWithIpoGuru(baseRows) {
   if (!process.env.IPOGURU_API_KEY) return baseRows;
