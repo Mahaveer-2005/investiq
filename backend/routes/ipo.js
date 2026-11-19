@@ -481,7 +481,7 @@ async function liveToRichShape(live) {
     listingDate: toIsoDate(live.listingDate),
     lotSize: live.lotSize || 'N/A',
     minInvestment: live.lotSize && max ? live.lotSize * max : 'N/A',
-    exchange: live.source === 'NSE_BSE_MERGED' ? 'NSE / BSE' : (live.source === 'BSE_LIVE' ? 'BSE' : 'NSE'),
+    exchange: live.source === 'NSE_BSE_MERGED' ? 'NSE / BSE' : (live.source === 'BSE_LIVE' ? 'BSE' : (live.source === 'XFLOT_LIVE' ? 'Xflot (supplemental)' : (live.source === 'IPOGURU_LIVE' ? 'IPO Guru' : (live.source === 'IPOALERTS_LIVE' ? 'IPOAlerts' : (live.source === 'DOWNSTOX_LIVE' ? 'Downstox' : 'NSE'))))),
     gmp: live.gmp ?? 'N/A', gmpPct: live.gmpPct ?? 'N/A', kostak: live.kostak ?? null, rating: null,
     status: live.status,
     // null (not 0!) when we genuinely don't know — 0 reads as a real price
@@ -499,13 +499,13 @@ async function liveToRichShape(live) {
     peers: [],
     verdict: 'NEUTRAL', verdictColor: '#f59e0b', verdictEmoji: '🤖',
     verdictReason: 'No pre-written verdict for live-fetched IPOs — use "Get Fresh AI Analysis" for a real-time AI verdict.',
-    source: live.source === 'NSE_BSE_MERGED' ? 'live_nse_bse' : (live.source === 'BSE_LIVE' ? 'live_bse' : 'live_nse'),
+    source: LIVE_SOURCE_LABELS[live.source] || 'live_provider',
   };
 }
 
-const LIVE_SOURCE_TAGS = ['NSE_LIVE', 'BSE_LIVE', 'NSE_BSE_MERGED', 'IPOGURU_LIVE', 'IPOALERTS_LIVE', 'DOWNSTOX_LIVE'];
+const LIVE_SOURCE_TAGS = ['NSE_LIVE', 'BSE_LIVE', 'NSE_BSE_MERGED', 'XFLOT_LIVE', 'IPOGURU_LIVE', 'IPOALERTS_LIVE', 'DOWNSTOX_LIVE'];
 const LIVE_SOURCE_LABELS = {
-  NSE_LIVE: 'live_nse', BSE_LIVE: 'live_bse', NSE_BSE_MERGED: 'live_nse_bse', IPOGURU_LIVE: 'live_ipoguru',
+  NSE_LIVE: 'live_nse', BSE_LIVE: 'live_bse', NSE_BSE_MERGED: 'live_nse_bse', XFLOT_LIVE: 'live_xflot', IPOGURU_LIVE: 'live_ipoguru',
   IPOALERTS_LIVE: 'live_ipoalerts', DOWNSTOX_LIVE: 'live_downstox',
 };
 
@@ -517,15 +517,17 @@ async function getMergedIPOList() {
   let result;
   try {
     const live = await getLiveNseIPOs();
-    const isLive = live.length && LIVE_SOURCE_TAGS.includes(live[0].source);
-    if (isLive) {
-      result = { list: await Promise.all(live.map(liveToRichShape)), source: LIVE_SOURCE_LABELS[live[0].source] };
+    const liveRows = live.filter(i => LIVE_SOURCE_TAGS.includes(i.source));
+    if (liveRows.length) {
+      result = { list: await Promise.all(liveRows.map(liveToRichShape)), source: LIVE_SOURCE_LABELS[liveRows[0].source] || 'live_provider' };
     } else {
-      result = { list: IPO_DATA.map(i => ({ ...i, source: 'curated' })), source: 'curated_fallback' };
+      // Never label an old curated snapshot or a placeholder as an upcoming IPO.
+      // An empty list is safer than presenting expired dates, stale GMP, or invented terms.
+      result = { list: [], source: 'live_unavailable' };
     }
   } catch (err) {
     console.error('IPO merge error:', err.message);
-    result = { list: IPO_DATA.map(i => ({ ...i, source: 'curated' })), source: 'curated_fallback' };
+    result = { list: [], source: 'live_unavailable' };
   }
   _mergedCache = result;
   _mergedCacheAt = Date.now();
@@ -582,8 +584,7 @@ router.get('/all', auth, async (req, res) => {
 router.get('/:id', auth, async (req, res) => {
   try {
     const { list } = await getMergedIPOList();
-    const ipo = list.find(i => i.id === req.params.id || i.symbol === req.params.id.toUpperCase())
-             || IPO_DATA.find(i => i.id === req.params.id || i.symbol === req.params.id.toUpperCase());
+    const ipo = list.find(i => i.id === req.params.id || i.symbol === req.params.id.toUpperCase());
     if (!ipo) return res.status(404).json({ message: 'IPO not found' });
     if (ipo.status === 'listed' && ipo.source === 'curated') return res.json(await enrichListed(ipo));
     res.json(ipo);
@@ -630,16 +631,17 @@ router.get('/meta/raw-sample', auth, async (req, res) => {
 router.get('/meta/live-source', auth, async (req, res) => {
   try {
     const live = await getLiveNseIPOs();
-    const isLive = live.length && LIVE_SOURCE_TAGS.includes(live[0].source);
+    const liveSourceRow = live.find(i => LIVE_SOURCE_TAGS.includes(i.source));
+    const isLive = Boolean(liveSourceRow);
     const diagnostics = getLastFetchDiagnostics();
     res.json({
       liveSourceReachable: isLive,
-      activeSource: isLive ? live[0].source : null,
+      activeSource: isLive ? liveSourceRow.source : null,
       rowCount: live.length,
-      diagnostics, // { nse, bse, ipoguru, ipoalerts, downstox } — each 'ok' or the failure reason
+      diagnostics, // Provider status values are 'ok' or the corresponding failure reason.
       note: isLive
-        ? `Live ${live[0].source.replace('_LIVE', '')} IPO feed reachable — data reflects real-time source data.`
-        : `All live sources were unreachable just now (${Object.entries(diagnostics).map(([k,v])=>`${k}: ${v}`).join(', ')}) — showing the curated recent-IPO dataset instead.`,
+        ? `Live ${liveSourceRow.source.replace('_LIVE', '')} IPO feed reachable — data reflects provider data.`
+        : `No live IPO provider returned usable data (${Object.entries(diagnostics).map(([k,v])=>`${k}: ${v}`).join(', ')}). Unverified fallback records are hidden.`,
     });
   } catch (err) {
     res.status(500).json({ liveSourceReachable: false, message: err.message });
@@ -657,8 +659,7 @@ router.get('/:id/analysis', auth, async (req, res) => {
     // now it searches the same merged list the main endpoints use, matching
     // by symbol first since that's stable across cache refreshes even if the
     // generated id changes slightly.
-    const ipo = list.find(i => i.symbol === req.params.id.toUpperCase() || i.id === req.params.id)
-             || IPO_DATA.find(i => i.id === req.params.id || i.symbol === req.params.id.toUpperCase());
+    const ipo = list.find(i => i.symbol === req.params.id.toUpperCase() || i.id === req.params.id);
     if (!ipo) return res.status(404).json({ message: 'IPO not found' });
     const analysis = await getAIIPOAnalysis(ipo);
     res.json(analysis);
