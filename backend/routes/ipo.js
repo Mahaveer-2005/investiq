@@ -527,7 +527,7 @@ async function getMergedIPOList() {
     }
   } catch (err) {
     console.error('IPO merge error:', err.message);
-    result = { list: IPO_DATA.map(i => ({ ...i, source: 'curated' })), source: 'curated_fallback' };
+    result = { list: [], source: 'live_unavailable' };
   }
   _mergedCache = result;
   _mergedCacheAt = Date.now();
@@ -631,15 +631,16 @@ router.get('/meta/raw-sample', auth, async (req, res) => {
 router.get('/meta/live-source', auth, async (req, res) => {
   try {
     const live = await getLiveNseIPOs();
-    const isLive = live.length && LIVE_SOURCE_TAGS.includes(live[0].source);
+    const liveSourceRow = live.find(i => LIVE_SOURCE_TAGS.includes(i.source));
+    const isLive = Boolean(liveSourceRow);
     const diagnostics = getLastFetchDiagnostics();
     res.json({
       liveSourceReachable: isLive,
-      activeSource: isLive ? live[0].source : null,
+      activeSource: isLive ? liveSourceRow.source : null,
       rowCount: live.length,
-      diagnostics, // { nse, bse, ipoguru, ipoalerts, downstox } — each 'ok' or the failure reason
+      diagnostics, // Provider status values are 'ok' or the corresponding failure reason.
       note: isLive
-        ? `Live ${live[0].source.replace('_LIVE', '')} IPO feed reachable — data reflects real-time source data.`
+        ? `Live ${liveSourceRow.source.replace('_LIVE', '')} IPO feed reachable — data reflects provider data.`
         : `No live IPO provider returned usable data (${Object.entries(diagnostics).map(([k,v])=>`${k}: ${v}`).join(', ')}). Unverified fallback records are hidden.`,
     });
   } catch (err) {
