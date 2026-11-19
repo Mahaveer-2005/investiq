@@ -120,7 +120,7 @@ export default function IPO() {
               >
                 {dataSource.liveSourceReachable
                   ? `🟢 Live ${dataSource.activeSource === 'NSE_BSE_MERGED' ? 'NSE/BSE' : (dataSource.activeSource === 'NSE_LIVE' ? 'NSE' : 'BSE')} feed`
-                  : `🟡 Curated dataset — NSE: ${dataSource.diagnostics?.nse || '?'}, BSE: ${dataSource.diagnostics?.bse || '?'}`}
+                  : `🟡 Live IPO feeds unavailable — unverified fallback data is hidden. NSE: ${dataSource.diagnostics?.nse || '?'}, BSE: ${dataSource.diagnostics?.bse || '?'}, Xflot: ${dataSource.diagnostics?.xflot || '?'}`}
               </div>
             )}
           </div>
