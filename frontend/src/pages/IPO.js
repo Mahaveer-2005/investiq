@@ -119,7 +119,7 @@ export default function IPO() {
                 title={dataSource.diagnostics ? `NSE: ${dataSource.diagnostics.nse} | BSE: ${dataSource.diagnostics.bse}` : ''}
               >
                 {dataSource.liveSourceReachable
-                  ? `🟢 Live ${dataSource.activeSource === 'NSE_BSE_MERGED' ? 'NSE/BSE' : (dataSource.activeSource === 'NSE_LIVE' ? 'NSE' : 'BSE')} feed`
+                  ? `🟢 Live ${dataSource.activeSource === 'NSE_BSE_MERGED' ? 'NSE/BSE' : (dataSource.activeSource === 'NSE_LIVE' ? 'NSE' : (dataSource.activeSource === 'XFLOT_LIVE' ? 'Xflot' : (dataSource.activeSource === 'IPOGURU_LIVE' ? 'IPO Guru' : (dataSource.activeSource === 'IPOALERTS_LIVE' ? 'IPOAlerts' : (dataSource.activeSource === 'DOWNSTOX_LIVE' ? 'Downstox' : 'BSE')))))} feed`
                   : `🟡 Live IPO feeds unavailable — unverified fallback data is hidden. NSE: ${dataSource.diagnostics?.nse || '?'}, BSE: ${dataSource.diagnostics?.bse || '?'}, Xflot: ${dataSource.diagnostics?.xflot || '?'}`}
               </div>
             )}
